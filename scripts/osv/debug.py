@@ -11,9 +11,7 @@ class SourceAddress:
         self.line = line
 
     def __str__(self):
-        if self.name:
-            return self.name
-        return '0x%x' % self.addr
+        return self.name or '0x%x' % self.addr
 
 class DummyResolver(object):
     def __init__(self):
@@ -31,7 +29,7 @@ class SymbolResolver(object):
 
     def __init__(self, object_path, fallback_resolver=DummyResolver(), show_inline=True):
         if not os.path.exists(object_path):
-            raise Exception('File not found: ' + object_path)
+            raise Exception(f'File not found: {object_path}')
         self.show_inline = show_inline
         self.fallback_resolver = fallback_resolver
         flags = '-Cfp'
@@ -45,27 +43,25 @@ class SymbolResolver(object):
         return self.addr2line.stdout.readline().rstrip('\n')
 
     def consume_unknown(self, line):
-        # addr2line ver. 2.23.2 (Ubuntu)
-        m = re.match(r'^\?\?$', line)
-        if m:
+        if m := re.match(r'^\?\?$', line):
             line = self.next_line()
             if not re.match(r'^\?\?:0$', line):
-                raise Exception('Unexpected response: ' + line)
+                raise Exception(f'Unexpected response: {line}')
             return True
 
-        # addr2line ver. 2.23.52.0.1-9.fc19
-        m = re.match(r'^\?\? \?\?:0$', line)
-        if m:
+        if m := re.match(r'^\?\? \?\?:0$', line):
             return True
 
     def parse_line(self, addr, line):
         if self.consume_unknown(line):
             return self.fallback_resolver(addr)
 
-        m = re.match(r'(?P<name>.*) at ((?P<file>.*?)|\?+):((?P<line>\d+)|\?+)', line)
-        if not m:
-            raise Exception('addr2line response not matched: ' + line)
-        return [SourceAddress(addr, m.group('name'), m.group('file'), m.group('line'))]
+        if m := re.match(
+            r'(?P<name>.*) at ((?P<file>.*?)|\?+):((?P<line>\d+)|\?+)', line
+        ):
+            return [SourceAddress(addr, m['name'], m['file'], m['line'])]
+        else:
+            raise Exception(f'addr2line response not matched: {line}')
 
     def __call__(self, addr):
         """

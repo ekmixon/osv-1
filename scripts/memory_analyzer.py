@@ -72,10 +72,7 @@ class TreeKey(object):
         return self.lost_bytes * 100 / self.total_bytes
 
     def __str__(self):
-        if not self.desc == None:
-            name = "%s %s" % (self.this, self.desc)
-        else:
-            name = "%s" % self.this
+        name = f"{self.this}" if self.desc is None else f"{self.this} {self.desc}"
         name += "\ncount: %d" % self.alloc
         if self.lost_bytes > 0:
             name += "\nunused: %d%%" % self.lost_percentage
@@ -135,8 +132,7 @@ groups = {
 }
 
 def strip_malloc(frames):
-    idx = prof.find_frame_index(frames, 'malloc')
-    if idx:
+    if idx := prof.find_frame_index(frames, 'malloc'):
         return frames[(idx + 1):]
     return frames
 

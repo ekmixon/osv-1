@@ -38,10 +38,10 @@ class src_addr_formatter:
         text = src_addr.name
 
         if self.args.show_file_name:
-            text += ' %s' % src_addr.filename
+            text += f' {src_addr.filename}'
 
         if self.args.show_line_number:
-            text += ':%s' % src_addr.line
+            text += f':{src_addr.line}'
 
         if self.args.show_address:
             text += ' @ 0x%x' % src_addr.addr
@@ -99,10 +99,13 @@ def symbol_resolver(args):
     return BeautifyingResolver(debug.SymbolResolver(elf_path, base, show_inline=not args.no_inlined_by))
 
 def get_backtrace_formatter(args):
-    if not args.backtrace:
-        return lambda backtrace: ''
-
-    return trace.BacktraceFormatter(symbol_resolver(args), src_addr_formatter(args))
+    return (
+        trace.BacktraceFormatter(
+            symbol_resolver(args), src_addr_formatter(args)
+        )
+        if args.backtrace
+        else (lambda backtrace: '')
+    )
 
 def list_trace(args):
     def data_formatter(sample):
@@ -200,10 +203,10 @@ def get_time_range(args):
     return trace.TimeRange(start, end)
 
 def parse_percentage(text):
-    m = re.match(r'(?P<perc>[\d]+(\.[\d]*)?)%', text)
-    if not m:
-        raise InvalidArgumentsException('invalid format: ' + text)
-    return float(m.group('perc'))
+    if m := re.match(r'(?P<perc>[\d]+(\.[\d]*)?)%', text):
+        return float(m['perc'])
+    else:
+        raise InvalidArgumentsException(f'invalid format: {text}')
 
 class MinHitPercentageFilter:
     def __init__(self, min_percentage):
@@ -264,15 +267,12 @@ def extract(args):
         if os.path.exists(args.tracefile):
             os.remove(args.tracefile)
             assert(not os.path.exists(args.tracefile))
-        cmdline = ['gdb', elf_path, '-batch']
-        # enable adding OSv's python modules to gdb, see
-        # http://sourceware.org/gdb/onlinedocs/gdb/Auto_002dloading-safe-path.html
-        cmdline.extend(['-iex', 'set auto-load safe-path .'])
+        cmdline = ['gdb', elf_path, '-batch', '-iex', 'set auto-load safe-path .']
         if args.remote:
-            cmdline.extend(['-ex', 'target remote ' + args.remote])
+            cmdline.extend(['-ex', f'target remote {args.remote}'])
         else:
             cmdline.extend(['-ex', 'conn'])
-        cmdline.extend(['-ex', 'osv trace save ' + args.tracefile])
+        cmdline.extend(['-ex', f'osv trace save {args.tracefile}'])
         proc = subprocess.Popen(cmdline, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT)
         _stdout, _ = proc.communicate()
@@ -280,7 +280,7 @@ def extract(args):
             print(_stdout.decode())
             sys.exit(1)
     else:
-        print("error: %s not found" % (elf_path))
+        print(f"error: {elf_path} not found")
         sys.exit(1)
 
 def prof_wait(args):
@@ -448,19 +448,10 @@ def print_summary(args, printer=sys.stdout.write):
                 count += 1
                 count_per_tp[t.tp] += 1
 
-                if not min_time:
-                    min_time = t.time
-                else:
-                    min_time = min(min_time, t.time)
-
-                if not max_time:
-                    max_time = t.time
-                else:
-                    max_time = max(max_time, t.time)
-
+                min_time = min(min_time, t.time) if min_time else t.time
+                max_time = max(max_time, t.time) if max_time else t.time
             if args.timed:
-                timed = timed_producer(t)
-                if timed:
+                if timed := timed_producer(t):
                     timed_samples.append(timed)
 
     if args.timed:
@@ -492,16 +483,20 @@ def print_summary(args, printer=sys.stdout.write):
         format = "  %-20s %8s %8s %8s %8s %8s %8s %8s %15s"
         print("\nTimed tracepoints [ms]:\n")
 
-        timed_samples = [t for t in timed_samples if t.time_range.intersection(time_range)]
-
-        if not timed_samples:
-            print("  None")
-        else:
+        if timed_samples := [
+            t for t in timed_samples if t.time_range.intersection(time_range)
+        ]:
             print(format % ("name", "count", "min", "50%", "90%", "99%", "99.9%", "max", "total"))
             print(format % ("----", "-----", "---", "---", "---", "---", "-----", "---", "-----"))
 
             for name, traces in get_timed_traces_per_function(timed_samples).items():
-                samples = sorted(list((t.time_range.intersection(time_range).length() for t in traces)))
+                samples = sorted(
+                    [
+                        t.time_range.intersection(time_range).length()
+                        for t in traces
+                    ]
+                )
+
                 print(format % (
                     name,
                     len(samples),
@@ -513,6 +508,8 @@ def print_summary(args, printer=sys.stdout.write):
                     format_duration(get_percentile(samples, 1)),
                     format_duration(sum(samples))))
 
+        else:
+            print("  None")
     print()
 
 def list_cpu_load(args):
@@ -523,7 +520,7 @@ def list_cpu_load(args):
     with get_trace_reader(args) as reader:
         for t in reader.get_traces():
             if t.name == "sched_load":
-                if not t.cpu in load_per_cpu:
+                if t.cpu not in load_per_cpu:
                     n_defined += 1
 
                 load_per_cpu[t.cpu] = t.data[0]
@@ -606,19 +603,21 @@ def list_wakeup_latency(args):
                     waiting[thread_id].wake = t
             elif t.name == "sched_wait_ret":
                 waiting_thread = waiting.pop(t.thread.ptr, None)
-                if waiting_thread and waiting_thread.wake:
-                    # See https://github.com/cloudius-systems/osv/issues/295
-                    if t.cpu == waiting_thread.wait.cpu:
-                        wakeup_delay = t.time - waiting_thread.wake.time
-                        wait_time = t.time - waiting_thread.wait.time
-                        print('0x%016x %-15s %3d %20s %13s %9s %s' % (
-                                    t.thread.ptr,
-                                    t.thread.name,
-                                    t.cpu,
-                                    trace.format_time(t.time),
-                                    format_wakeup_latency(wakeup_delay),
-                                    trace.format_duration(wait_time),
-                                    bt_formatter(t.backtrace)))
+                if (
+                    waiting_thread
+                    and waiting_thread.wake
+                    and t.cpu == waiting_thread.wait.cpu
+                ):
+                    wakeup_delay = t.time - waiting_thread.wake.time
+                    wait_time = t.time - waiting_thread.wait.time
+                    print('0x%016x %-15s %3d %20s %13s %9s %s' % (
+                                t.thread.ptr,
+                                t.thread.name,
+                                t.cpu,
+                                trace.format_time(t.time),
+                                format_wakeup_latency(wakeup_delay),
+                                trace.format_duration(wait_time),
+                                bt_formatter(t.backtrace)))
 
 def add_trace_listing_options(parser):
     add_time_slicing_options(parser)
@@ -632,11 +631,11 @@ def convert_dump(args):
         if os.path.exists(args.tracefile):
             os.remove(args.tracefile)
             assert(not os.path.exists(args.tracefile))
-        print("Converting dump %s -> %s" % (args.dumpfile, args.tracefile))
+        print(f"Converting dump {args.dumpfile} -> {args.tracefile}")
         td = trace.TraceDumpReader(args.dumpfile)
         trace.write_to_file(args.tracefile, list(td.traces()))
     else:
-        print("error: %s not found" % (args.dumpfile))
+        print(f"error: {args.dumpfile} not found")
         sys.exit(1)
 
 def download_dump(args):
@@ -646,9 +645,9 @@ def download_dump(args):
 
     file = args.tracefile
     client = Client(args)
-    url = client.get_url() + "/trace/buffers"
+    url = f"{client.get_url()}/trace/buffers"
 
-    print("Downloading %s -> %s" % (url, file))
+    print(f"Downloading {url} -> {file}")
 
     r = requests.get(url, stream=True, **client.get_request_kwargs())
     size = int(r.headers['content-length'])

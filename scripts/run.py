@@ -46,41 +46,41 @@ def set_imgargs(options):
     if options.image and not execute:
         return
     if not execute:
-        with open("build/%s/cmdline" % (options.opt_path), "r") as cmdline:
+        with open(f"build/{options.opt_path}/cmdline", "r") as cmdline:
             execute = cmdline.read()
     if options.verbose:
-        execute = "--verbose " + execute
+        execute = f"--verbose {execute}"
 
     if options.jvm_debug or options.jvm_suspend:
         if '-agentlib:jdwp' in execute:
             raise Exception('The command line already has debugger options')
-        if not 'java.so' in execute:
+        if 'java.so' not in execute:
             raise Exception('java.so is not part of the command line')
 
-        debug_options = '-agentlib:jdwp=transport=dt_socket,server=y,suspend=%s,address=5005' % \
-            ('n', 'y')[options.jvm_suspend]
-        execute = execute.replace('java.so', 'java.so ' + debug_options)
+        debug_options = f"-agentlib:jdwp=transport=dt_socket,server=y,suspend={('n', 'y')[options.jvm_suspend]},address=5005"
+
+        execute = execute.replace('java.so', f'java.so {debug_options}')
 
     if options.trace:
-        execute = ' '.join('--trace=%s' % name for name in options.trace) + ' ' + execute
+        execute = ' '.join(f'--trace={name}' for name in options.trace) + ' ' + execute
 
     if options.trace_backtrace:
-        execute = '--trace-backtrace ' + execute
+        execute = f'--trace-backtrace {execute}'
 
     if options.sampler:
         execute = '--sampler=%d %s' % (int(options.sampler), execute)
 
     if options.hypervisor == 'qemu_microvm':
-        execute = '--nopci ' + execute
+        execute = f'--nopci {execute}'
 
     if options.mount_fs:
-        execute = ' '.join('--mount-fs=%s' % m for m in options.mount_fs) + ' ' + execute
+        execute = ' '.join(f'--mount-fs={m}' for m in options.mount_fs) + ' ' + execute
 
     if options.ip:
-        execute = ' '.join('--ip=%s' % i for i in options.ip) + ' ' + execute
+        execute = ' '.join(f'--ip={i}' for i in options.ip) + ' ' + execute
 
     if options.bootchart:
-        execute = '--bootchart ' + execute
+        execute = f'--bootchart {execute}'
 
     options.osv_cmdline = execute
     if options.kernel or options.hypervisor == 'qemu_microvm' or options.arch == 'aarch64':
@@ -94,7 +94,7 @@ def set_imgargs(options):
 
 def is_direct_io_supported(path):
     if not os.path.exists(path):
-        raise Exception('Path not found: ' + path)
+        raise Exception(f'Path not found: {path}')
 
     try:
         file = os.open(path, os.O_RDONLY | os.O_DIRECT)

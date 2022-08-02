@@ -5,9 +5,9 @@ import runpy
 import collections
 
 _modules = collections.OrderedDict()
-_loading_modules = list()
-_modules_to_run = dict()
-_modules_to_be_added_if_other_module_present = dict()
+_loading_modules = []
+_modules_to_run = {}
+_modules_to_be_added_if_other_module_present = {}
 
 class Module(object):
     def __init__(self, name, config, properties):
@@ -49,7 +49,7 @@ def local_import(path):
 
 def unique(items):
     seen = set()
-    return (x for x in items if not x in seen and not seen.add(x))
+    return (x for x in items if x not in seen and not seen.add(x))
 
 def get_required_modules():
     """
@@ -99,28 +99,29 @@ def all_module_directories():
             yield os.path.expandvars(module_config["path"])
 
 def fetch_module(module_config, target_dir):
-    print("Fetching %s" % module_config["name"])
+    print(f'Fetching {module_config["name"]}')
 
     module_type = module_config["type"]
     if module_type == "git":
-        cmd = "git clone -b %s %s %s" % (module_config["branch"], module_config["path"], target_dir)
+        cmd = f'git clone -b {module_config["branch"]} {module_config["path"]} {target_dir}'
+
     elif module_type == "svn":
-        cmd = "svn co %s %s" % (module_config["path"], target_dir)
+        cmd = f'svn co {module_config["path"]} {target_dir}'
     elif module_type == "dir":
-        cmd = "cp -a %s %s" % (module_config["path"], target_dir)
+        cmd = f'cp -a {module_config["path"]} {target_dir}'
     elif module_type == "direct-dir":
         raise Exception("Trying to fetch direct module")
     else:
-        raise Exception("%s is unknown type" % module_type)
+        raise Exception(f"{module_type} is unknown type")
 
     print(cmd)
-    returncode = subprocess.call([cmd], shell=True)
-    if returncode:
+    if returncode := subprocess.call([cmd], shell=True):
         raise Exception("Command failed with exit code: %d" % returncode)
 
 def require_if_other_module_present(module_name,other_module_name):
-    list_of_modules = _modules_to_be_added_if_other_module_present.get(other_module_name,None)
-    if(list_of_modules):
+    if list_of_modules := _modules_to_be_added_if_other_module_present.get(
+        other_module_name, None
+    ):
         list_of_modules.append(module_name)
     else:
         _modules_to_be_added_if_other_module_present[other_module_name] = [module_name]
@@ -149,23 +150,26 @@ def require(module_name):
 
     module_config = find_module_config(module_name)
     if not module_config:
-        raise Exception("Module not found: %s. Please check configuration: %s" % (module_name, get_config_path()))
+        raise Exception(
+            f"Module not found: {module_name}. Please check configuration: {get_config_path()}"
+        )
+
 
     module_dir = _get_module_dir(module_config)
     if not os.path.exists(module_dir):
         if _is_direct(module_config):
-            raise Exception("Path does not exist: " + module_dir)
+            raise Exception(f"Path does not exist: {module_dir}")
         fetch_module(module_config, module_dir)
 
     py_module_file = 'module.py'
     module_file = os.path.join(module_dir, py_module_file)
     if not os.path.exists(module_file):
-        print("No %s in %s" % (py_module_file, module_dir))
+        print(f"No {py_module_file} in {module_dir}")
         module_properties = {}
     else:
         _loading_modules.append(module_name)
         try:
-            print("Importing %s" % module_file)
+            print(f"Importing {module_file}")
             module_properties = local_import(module_file)
         finally:
             _loading_modules.remove(module_name)
@@ -192,12 +196,14 @@ def require_running(module_name, run_config='*'):
 
     """
     module = require(module_name)
-    old_config = _modules_to_run.get(module, None)
-    if old_config:
+    if old_config := _modules_to_run.get(module, None):
         if old_config == '*':
             _modules_to_run[module] = run_config
         elif run_config != '*' and old_config != run_config:
-            raise Exception('Desired to run %s.%s but .%s already selected' % (module_name, run_config, old_config))
+            raise Exception(
+                f'Desired to run {module_name}.{run_config} but .{old_config} already selected'
+            )
+
     else:
         _modules_to_run[module] = run_config
 
@@ -205,15 +211,11 @@ def get_run_config(module, run_config):
     if run_config == 'none':
         return None
 
-    if run_config == '*':
-        attr_name = 'default'
-    else:
-        attr_name = run_config
-
+    attr_name = 'default' if run_config == '*' else run_config
     if hasattr(module, attr_name):
         return getattr(module, attr_name)
     elif run_config != '*':
-        raise Exception("Attribute %s not set in module %s" % (attr_name, module.name))
+        raise Exception(f"Attribute {attr_name} not set in module {module.name}")
 
 def get_modules_to_run():
     return _modules_to_run

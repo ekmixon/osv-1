@@ -13,9 +13,7 @@ def is_broken_pipe_error(e):
 def tcp_close_without_reading(hypervisor, host_name):
     global arch
     host_port = 7777
-    run_args = []
-    if os.uname().machine != arch:
-        run_args=['--arch', arch, '-c', '2']
+    run_args = ['--arch', arch, '-c', '2'] if os.uname().machine != arch else []
     server = run_command_in_guest('/tests/misc-tcp-close-without-reading.so',
         forward=[(host_port, 7777)], hypervisor=hypervisor, run_py_args=run_args)
 

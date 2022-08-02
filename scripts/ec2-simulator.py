@@ -28,31 +28,35 @@ if __name__ == "__main__":
 
     dir = tempfile.mkdtemp()
     try:
-        os.makedirs(dir + '/latest/meta-data')
-        os.makedirs(dir + '/latest/meta-data/placement')
+        os.makedirs(f'{dir}/latest/meta-data')
+        os.makedirs(f'{dir}/latest/meta-data/placement')
 
-        write_file(dir + "/latest/meta-data/ami-id", args.ami_id)
+        write_file(f"{dir}/latest/meta-data/ami-id", args.ami_id)
 
-        write_file(dir + "/latest/meta-data/ami-launch-index", args.ami_launch_index)
+        write_file(f"{dir}/latest/meta-data/ami-launch-index", args.ami_launch_index)
 
-        write_file(dir + "/latest/meta-data/reservation-id", args.reservation_id)
+        write_file(f"{dir}/latest/meta-data/reservation-id", args.reservation_id)
 
-        write_file(dir + "/latest/meta-data/local-ipv4", args.local_ipv4)
+        write_file(f"{dir}/latest/meta-data/local-ipv4", args.local_ipv4)
 
-        write_file(dir + "/latest/meta-data/public-ipv4", args.public_ipv4)
+        write_file(f"{dir}/latest/meta-data/public-ipv4", args.public_ipv4)
 
-        write_file(dir + "/latest/meta-data/public-hostname", args.public_hostname)
+        write_file(f"{dir}/latest/meta-data/public-hostname", args.public_hostname)
 
-        write_file(dir + "/latest/meta-data/placement/availability-zone", args.availability_zone)
+        write_file(
+            f"{dir}/latest/meta-data/placement/availability-zone",
+            args.availability_zone,
+        )
+
 
         if args.user_data_from_file:
             if args.user_data:
                 raise Exception('-u|--user-data cannot be set together with -f|--user-data-from-file')
-            write_file(dir + "/latest/user-data", read_file(args.user_data_from_file))
+            write_file(f"{dir}/latest/user-data", read_file(args.user_data_from_file))
         elif args.user_data:
-            write_file(dir + "/latest/user-data", args.user_data)
+            write_file(f"{dir}/latest/user-data", args.user_data)
         else:
-            write_file(dir + "/latest/user-data", "")
+            write_file(f"{dir}/latest/user-data", "")
 
         metadata.start_server(dir)
     finally:

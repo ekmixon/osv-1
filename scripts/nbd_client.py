@@ -83,19 +83,17 @@ class nbd_client(object):
 
     def _build_header(self, request_type, offset, length):
         self._is_read = False
-        header = struct.pack('>LLQQL', 0x25609513,
-                             request_type, self._handle, offset, length)
-        return header
+        return struct.pack(
+            '>LLQQL', 0x25609513, request_type, self._handle, offset, length
+        )
 
     def _parse_reply(self):
-        data = ""
         reply = self._s.recv(4 + 4 + 8)
         (magic, errno, handle) = struct.unpack(">LLQ", reply)
         assert(magic == 0x67446698)
         assert(handle == self._handle)
         self._handle += 1
-        if self._is_read:
-            data = self._s.recv(self._length)
+        data = self._s.recv(self._length) if self._is_read else ""
         return (data, errno)
 
     def _check_value(self, name, value):
@@ -126,11 +124,10 @@ class nbd_client(object):
         return data
 
     def need_flush(self):
-        if self._flags & self.FLAG_HAS_FLAGS != 0 and \
-           self._flags & self.FLAG_SEND_FLUSH != 0:
-            return True
-        else:
-            return False
+        return (
+            self._flags & self.FLAG_HAS_FLAGS != 0
+            and self._flags & self.FLAG_SEND_FLUSH != 0
+        )
 
     def flush(self):
         self._is_read = False

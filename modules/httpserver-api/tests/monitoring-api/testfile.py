@@ -6,32 +6,34 @@ import subprocess
 
 class testfile(basetest.Basetest):
     def build_curl_cmd(self, args):
-        if not self._client.is_ssl():
-            return 'curl ' + args
-        return 'curl --cacert %s --cert %s --key %s %s' % (
-            self.get_ca_cert_path(), self.get_client_cert_path(), self.get_client_key_path(), args)
+        return (
+            f'curl --cacert {self.get_ca_cert_path()} --cert {self.get_client_cert_path()} --key {self.get_client_key_path()} {args}'
+            if self._client.is_ssl()
+            else f'curl {args}'
+        )
 
     def build_wget_cmd(self, args):
-        if not self._client.is_ssl():
-            return 'wget ' + args
-        return 'wget --ca-certificate=%s --certificate=%s --private-key=%s %s' % (
-            self.get_ca_cert_path(), self.get_client_cert_path(), self.get_client_key_path(), args)
+        return (
+            f'wget --ca-certificate={self.get_ca_cert_path()} --certificate={self.get_client_cert_path()} --private-key={self.get_client_key_path()} {args}'
+            if self._client.is_ssl()
+            else f'wget {args}'
+        )
 
     def test_list_file_cmd(self):
         path = "/file"
-        lst = self.curl(path + "/etc?op=LISTSTATUS")
+        lst = self.curl(f"{path}/etc?op=LISTSTATUS")
         hosts = next((item for item in lst if item["pathSuffix"] == "hosts"), None)
         self.assertEqual(hosts["owner"], "osv")
 
     def test_list_astrik_file_cmd(self):
         path = "/file"
-        lst = self.curl(path + "/et%3F/hos*?op=LISTSTATUS")
+        lst = self.curl(f"{path}/et%3F/hos*?op=LISTSTATUS")
         hosts = next((item for item in lst if item["pathSuffix"] == "hosts"), None)
         self.assertEqual(hosts["owner"], "osv")
 
     def test_file_status_cmd(self):
         path = "/file"
-        hosts = self.curl(path + "/etc/hosts?op=GETFILESTATUS")
+        hosts = self.curl(f"{path}/etc/hosts?op=GETFILESTATUS")
         self.assertEqual(hosts["type"], "FILE")
         self.assert_between("accessTime", 1300000000, 2000000000, hosts["accessTime"])
         self.assertEqual(hosts["blockSize"], 512)
@@ -45,9 +47,21 @@ class testfile(basetest.Basetest):
 
     def test_put_file_cmd(self):
         path = "/file"
-        self.assertHttpError(path + "/etc/hosts?op=COPY&destination="+urllib.parse.quote("/etc/hosts1"), 404, method='PUT')
-        self.assertHttpError(path + "/etc/hosts1?op=RENAME&destination="+urllib.parse.quote("/etc/hosts2"), 404, method='PUT')
-        self.assertHttpError(path + "/etc/hosts2?op=DELETE", 404, method='DELETE')
+        self.assertHttpError(
+            f"{path}/etc/hosts?op=COPY&destination="
+            + urllib.parse.quote("/etc/hosts1"),
+            404,
+            method='PUT',
+        )
+
+        self.assertHttpError(
+            f"{path}/etc/hosts1?op=RENAME&destination="
+            + urllib.parse.quote("/etc/hosts2"),
+            404,
+            method='PUT',
+        )
+
+        self.assertHttpError(f"{path}/etc/hosts2?op=DELETE", 404, method='DELETE')
 
     @classmethod
     def setUpClass(cls):

@@ -5,7 +5,7 @@ import distro
 import re
 
 osv_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
-destination = '%s/build/downloaded_packages/aarch64' % osv_root
+destination = f'{osv_root}/build/downloaded_packages/aarch64'
 
 def fedora_download_commands(fedora_version):
     #For some reason, the gcc-c++-aarch64-linux-gnu package Fedora 34 ships with,
@@ -34,48 +34,76 @@ def fedora_download_commands(fedora_version):
                       'boost-test',
                       'boost-chrono',
                       'boost-timer']
-    script_path = '%s/scripts/download_fedora_aarch64_rpm_package.sh' % osv_root
+    script_path = f'{osv_root}/scripts/download_fedora_aarch64_rpm_package.sh'
 
-    install_commands = ['%s %s %s %s/gcc' % (script_path, package, fedora_version, destination) for package in gcc_packages]
-    install_commands += ['%s %s %s %s/boost' % (script_path, package, fedora_version, destination) for package in boost_packages]
-    install_commands = ['rm -rf %s/gcc/install' % destination,
-                        'rm -rf %s/boost/install' % destination] + install_commands
+    install_commands = [
+        f'{script_path} {package} {fedora_version} {destination}/gcc'
+        for package in gcc_packages
+    ]
+
+    install_commands += [
+        f'{script_path} {package} {fedora_version} {destination}/boost'
+        for package in boost_packages
+    ]
+
+    install_commands = [
+        f'rm -rf {destination}/gcc/install',
+        f'rm -rf {destination}/boost/install',
+    ] + install_commands
+
     return ' && '.join(install_commands)
 
 def ubuntu_download_commands(boost_long_version):
     boost_short_version = re.search('\d+\.\d+', boost_long_version).group()
     boost_patchlevel = boost_long_version.split('.')[2]
-    boost_packages = ['libboost%s-dev' % boost_short_version,
-                      'libboost-system%s' % boost_short_version,
-                      'libboost-system%s-dev' % boost_short_version,
-                      'libboost-filesystem%s' % boost_short_version,
-                      'libboost-filesystem%s-dev' % boost_short_version,
-                      'libboost-test%s' % boost_short_version,
-                      'libboost-test%s-dev' % boost_short_version,
-                      'libboost-timer%s' % boost_short_version,
-                      'libboost-timer%s-dev' % boost_short_version,
-                      'libboost-chrono%s' % boost_short_version,
-                      'libboost-chrono%s-dev' % boost_short_version]
+    boost_packages = [
+        f'libboost{boost_short_version}-dev',
+        f'libboost-system{boost_short_version}',
+        f'libboost-system{boost_short_version}-dev',
+        f'libboost-filesystem{boost_short_version}',
+        f'libboost-filesystem{boost_short_version}-dev',
+        f'libboost-test{boost_short_version}',
+        f'libboost-test{boost_short_version}-dev',
+        f'libboost-timer{boost_short_version}',
+        f'libboost-timer{boost_short_version}-dev',
+        f'libboost-chrono{boost_short_version}',
+        f'libboost-chrono{boost_short_version}-dev',
+    ]
 
-    script_path = '%s/scripts/download_ubuntu_aarch64_deb_package.sh' % osv_root
+
+    script_path = f'{osv_root}/scripts/download_ubuntu_aarch64_deb_package.sh'
 
     if boost_patchlevel == '0':
         boost_package_directory = boost_short_version
     else:
         boost_package_directory = boost_long_version
 
-    install_commands = ['%s boost%s %s %s/boost' % (script_path, boost_package_directory, package, destination) for package in boost_packages]
-    install_commands = ['rm -rf %s/boost/install' % destination] + install_commands
+    install_commands = [
+        f'{script_path} boost{boost_package_directory} {package} {destination}/boost'
+        for package in boost_packages
+    ]
+
+    install_commands = [f'rm -rf {destination}/boost/install'] + install_commands
     return ' && '.join(install_commands)
 
 def ubuntu_identify_boost_version(codename, index):
-    packages = subprocess.check_output(['wget', '-t', '1', '-qO-', 'http://ports.ubuntu.com/indices/override.%s.%s' % (codename, 'main')]).decode('utf-8')
-    libboost_system_package = re.search("libboost-system\d+\.\d+\.\d+", packages)
-    if libboost_system_package:
-       libboost_system_package_name = libboost_system_package.group()
-       return re.search('\d+\.\d+\.\d+', libboost_system_package_name).group()
+    packages = subprocess.check_output(
+        [
+            'wget',
+            '-t',
+            '1',
+            '-qO-',
+            f'http://ports.ubuntu.com/indices/override.{codename}.main',
+        ]
+    ).decode('utf-8')
+
+    if libboost_system_package := re.search(
+        "libboost-system\d+\.\d+\.\d+", packages
+    ):
+        libboost_system_package_name = libboost_system_package.group()
+        return re.search('\d+\.\d+\.\d+', libboost_system_package_name).group()
     else:
-       return ''
+        return ''
 
 name = distro.id()
 version = distro.version()
@@ -91,9 +119,15 @@ elif name.lower() == 'ubuntu':
         sys.exit(1)
     commands_to_download = ubuntu_download_commands(boost_version)
 elif name.lower() == "centos":
-    commands_to_download = [ 'bash -eu %s/scripts/download_aarch64_toolchain.sh' % osv_root ]
+    commands_to_download = [
+        f'bash -eu {osv_root}/scripts/download_aarch64_toolchain.sh'
+    ]
+
 else:
-    print("The distribution %s is not supported for cross-compiling aarch64 version of OSv" % name)
+    print(
+        f"The distribution {name} is not supported for cross-compiling aarch64 version of OSv"
+    )
+
     sys.exit(1)
 
 print('Downloading aarch64 packages to cross-compile ARM version ...')

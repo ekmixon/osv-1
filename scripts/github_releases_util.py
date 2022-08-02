@@ -30,11 +30,11 @@ def client(github_token):
 
 def get_repo(args):
     gh = client(api_token)
-    repo_full_name = "%s/%s" %(args.owner, args.repo)
+    repo_full_name = f"{args.owner}/{args.repo}"
     try:
         return gh.get_repo(repo_full_name)
     except UnknownObjectException:
-        print("Could not find the repo [%s]!" % repo_full_name)
+        print(f"Could not find the repo [{repo_full_name}]!")
         return None
 
 def get_osv_repo():
@@ -46,7 +46,7 @@ def get_commit(repo, sha):
         commit = repo.get_commit(sha)
         return commit.commit
     except UnknownObjectException:
-        print("Could not find the commit [%s]!" % sha)
+        print(f"Could not find the commit [{sha}]!")
         return None
 
 def list_releases(args):
@@ -84,25 +84,31 @@ def list_releases(args):
                        release.tag_name, release.title, str(release.published_at)))
 
 def get_release(args):
-    repository = get_repo(args)
-    if repository:
+    if repository := get_repo(args):
         try:
             return repository.get_release(args.release)
         except UnknownObjectException:
-            print("Could not find the release [%s]!" % args.release)
+            print(f"Could not find the release [{args.release}]!")
             return None
     else:
         return None
 
 def list_artifacts(args):
-    release = get_release(args)
-    if release:
+    if release := get_release(args):
         assets = release.get_assets()
         if assets.totalCount > 0:
             download_base = assets[0].browser_download_url.split('/download')[0]
-            print('%-40s %-10s %-50s' % (
-                  "NAME", "SIZE", "DOWNLOAD_URL (base=" + download_base  + "/download)"
-            ))
+            print(
+                (
+                    '%-40s %-10s %-50s'
+                    % (
+                        "NAME",
+                        "SIZE",
+                        f"DOWNLOAD_URL (base={download_base}/download)",
+                    )
+                )
+            )
+
             for asset in assets:
                 download_url_suffix = asset.browser_download_url.split('/download')[1]
                 print('%-40s %-10s %-50s' % (
@@ -134,29 +140,36 @@ def upload_artifacts(args):
 
 
 def delete_artifacts(args):
-    release = get_release(args)
-    if release:
-        found_assets = 0
-        for asset in release.get_assets():
-            import re
-            if re.match(args.name, asset.name):
-                found_assets = found_assets + 1
-                answer = input("Would you like to delete artifact [%s] from the release: %s of %s? [y|n]" %
-                                 (asset.name, args.release, "%s/%s" %(args.owner, args.repo)))
-                if answer.capitalize() == 'Y':
-                    asset.delete_asset()
-                    print("Deleted artifact [%s] from the release: %s of %s!" %
-                          (asset.name, args.release, "%s/%s" %(args.owner, args.repo)))
-        if found_assets == 0:
-            print('Failed to find any artifacts matching [%s]' % args.name)
+    if not (release := get_release(args)):
+        return
+    found_assets = 0
+    for asset in release.get_assets():
+        import re
+        if re.match(args.name, asset.name):
+            found_assets = found_assets + 1
+            answer = input(
+                f"Would you like to delete artifact [{asset.name}] from the release: {args.release} of {args.owner}/{args.repo}? [y|n]"
+            )
+
+            if answer.capitalize() == 'Y':
+                asset.delete_asset()
+                print(
+                    f"Deleted artifact [{asset.name}] from the release: {args.release} of {args.owner}/{args.repo}!"
+                )
+
+    if found_assets == 0:
+        print(f'Failed to find any artifacts matching [{args.name}]')
 
 def download_artifacts(args):
     def download_artifact(download_url, name, directory):
         import subprocess, sys
-        print('... Downloading the artifact [%s] from %s.' % (name, download_url))
-        ret = subprocess.call(['wget', '-nv', download_url, '-O', directory + '/' + name])
+        print(f'... Downloading the artifact [{name}] from {download_url}.')
+        ret = subprocess.call(
+            ['wget', '-nv', download_url, '-O', f'{directory}/{name}']
+        )
+
         if ret != 0:
-            print('Failed to download %s!' % download_url)
+            print(f'Failed to download {download_url}!')
 
     import os
     if args.directory and not os.path.exists(args.directory):
@@ -175,7 +188,7 @@ def download_artifacts(args):
             else:
                 download_artifact(asset.browser_download_url, asset.name, args.directory)
         if args.name and found_assets == 0:
-            print('Failed to find any artifacts matching [%s]' % args.name)
+            print(f'Failed to find any artifacts matching [{args.name}]')
 
 api_token = os.environ.get('GH_API_TOKEN')
 

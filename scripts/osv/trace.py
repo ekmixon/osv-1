@@ -55,9 +55,7 @@ class TimeRange(object):
     def __contains__(self, timestamp):
         if self.begin and timestamp < self.begin:
             return False
-        if self.end and timestamp >= self.end:
-            return False
-        return True
+        return not self.end or timestamp < self.end
 
     def length(self):
         if self.begin is None or self.end is None:
@@ -79,10 +77,7 @@ class TimeRange(object):
         else:
             end = min(self.end, other.end)
 
-        if begin and end and begin > end:
-            return None
-
-        return TimeRange(begin, end)
+        return None if begin and end and begin > end else TimeRange(begin, end)
 
 class TracePoint:
     def __init__(self, key, name, signature, format):
@@ -92,11 +87,7 @@ class TracePoint:
         self.format = format
 
     def __repr__(self):
-        return 'TracePoint(key=%s, name=%s, signature=%s, format=%s)' % (
-                self.key,
-                self.name,
-                self.signature,
-                self.format)
+        return f'TracePoint(key={self.key}, name={self.name}, signature={self.signature}, format={self.format})'
 
 class Trace:
     def __init__(self, tp, thread, time, cpu, data, backtrace=None):
@@ -176,7 +167,7 @@ def do_split_format(format_str):
         except StopIteration:
             return
         if c in '<>=!@':
-            raise Exception('Not supported: ' + c)
+            raise Exception(f'Not supported: {c}')
         if c == '*':
             yield c
         else:
@@ -201,9 +192,7 @@ formatters = {
 }
 
 def get_alignment_of(fmt):
-    if fmt == '*':
-        return 2
-    return struct.calcsize('c' + fmt) - struct.calcsize(fmt)
+    return 2 if fmt == '*' else struct.calcsize(f'c{fmt}') - struct.calcsize(fmt)
 
 def get_formatter(format_code):
     def identity(x):
@@ -268,8 +257,7 @@ class WritingPacker:
 
             alignment = get_alignment_of(fmt)
             delta = self.offset - start_offset
-            padding = align_up(delta, alignment) - delta
-            if padding:
+            if padding := align_up(delta, alignment) - delta:
                 self.writer(b'\0' * padding)
                 self.offset += padding
 
@@ -295,8 +283,8 @@ class WritingPacker:
 
     def pack_str(self, *args):
         for arg in args:
-            if not type(arg) == str:
-                raise Exception('Should be string but is %s' % type(arg))
+            if type(arg) != str:
+                raise Exception(f'Should be string but is {type(arg)}')
             self.pack_blob(arg.encode())
 
 class NotATraceDumpFile(Exception):
@@ -330,7 +318,7 @@ class TraceDumpReaderBase :
         self.align(siz)
         val = self.file.read(siz)
         if len(val) != siz:
-            raise EOFError(str(len(val)) + "!=" + str(siz))
+            raise EOFError(f"{len(val)}!={str(siz)}")
         return val
 
     def read(self, type):
@@ -377,7 +365,7 @@ class TraceDumpReader(TraceDumpReaderBase) :
     def readTraceDict(self, size):
         self.backtrace_len = self.read('I')
         n_types = self.read('I')
-        for i in range(0, n_types):
+        for _ in range(n_types):
             tp_key = self.read('Q')
             id = self.readString()
             name = self.readString()
@@ -385,7 +373,7 @@ class TraceDumpReader(TraceDumpReaderBase) :
             fmt = self.readString()
             n_args = self.read('I')
             sig = ""
-            for j in range(0, n_args):
+            for _ in range(n_args):
                 arg_name = self.readString()
                 arg_sig = self.file.read(1).decode()
                 if arg_sig == 'p':
@@ -401,7 +389,7 @@ class TraceDumpReader(TraceDumpReaderBase) :
         unpacker = SlidingUnpacker(trace_log)
         while unpacker:
             tp_key, = unpacker.unpack('Q')
-            if (tp_key == 0) or (tp_key == -1):
+            if tp_key in [0, -1]:
                 break
 
             thread, thread_name, time, cpu, flags = unpacker.unpack('Q16sQII')
@@ -419,8 +407,14 @@ class TraceDumpReader(TraceDumpReaderBase) :
             data = unpacker.unpack(tp.signature)
             unpacker.align_up(8)
             last_tp = tp
-            last_trace = Trace(tp, Thread(thread, thread_name), time, cpu, data, backtrace=backtrace)
-            yield last_trace
+            yield Trace(
+                tp,
+                Thread(thread, thread_name),
+                time,
+                cpu,
+                data,
+                backtrace=backtrace,
+            )
 
     def traces(self):
         iters = [self.oneTrace(data) for data in self.trace_buffers]
@@ -462,13 +456,13 @@ class TraceDumpSymbols(TraceDumpReaderBase) :
 
     def readSymbols(self, size):
         n_symbols = self.read('I')
-        for i in range(0, n_symbols):
+        for _ in range(n_symbols):
             name = self.readString()
             addr = self.read('Q')
             size = self.read('Q')
             file = self.readString()
             n_lines = self.read('I')
-            for j in range(0, n_lines):
+            for _ in range(n_lines):
                 offs = self.read('I')
                 line = self.read('I')
             self.symbols.append(Symbol(addr, size, name, file))
@@ -476,13 +470,13 @@ class TraceDumpSymbols(TraceDumpReaderBase) :
 
     def readModules(self, size):
         n_modules = self.read('I')
-        for i in range(0, n_modules):
+        for _ in range(n_modules):
             file = self.readString()
             base = self.read('Q')
             size = self.read('Q')
             self.modules.append(Symbol(base, size, file))
             n_segments = self.read('I')
-            for j in range(0, n_segments):
+            for _ in range(n_segments):
                 name = self.readString()
                 self.skip('IIQ')
                 addr = self.read('Q')
@@ -525,7 +519,7 @@ def read(buffer_view):
 
     tracepoints = {}
     n_tracepoints, = unpacker.unpack('Q')
-    for i in range(n_tracepoints):
+    for _ in range(n_tracepoints):
         key, = unpacker.unpack('Q')
         tracepoints[key] = TracePoint(key, unpacker.unpack_str(),
             unpacker.unpack_str(), unpacker.unpack_str())
@@ -549,7 +543,7 @@ def write(traces, writer):
     packer = WritingPacker(writer)
     packer.pack('i', _format_version)
 
-    tracepoints = set(trace.tp for trace in traces)
+    tracepoints = {trace.tp for trace in traces}
     packer.pack('Q', len(tracepoints))
     for tp in tracepoints:
         packer.pack('Q', tp.key)
@@ -587,9 +581,7 @@ class read_file:
             self.file.close()
 
     def get_traces(self):
-        if self.dumpreader:
-            return self.dumpreader.traces()
-        return read(self.map)
+        return self.dumpreader.traces() if self.dumpreader else read(self.map)
 
 def write_to_file(filename, traces):
     with open(filename, 'wb') as file:

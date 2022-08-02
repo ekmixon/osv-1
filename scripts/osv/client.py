@@ -9,7 +9,7 @@ _default_cert_base = os.path.join(_osv_base, 'modules', 'certs', 'build')
 
 def _pass_if_exists(path):
     if not os.path.exists(path):
-        raise Exception('Path does not exist: ' + path)
+        raise Exception(f'Path does not exist: {path}')
     return path
 
 class Client(object):
@@ -58,20 +58,20 @@ class Client(object):
     def get_url(self):
         if self.use_full_url:
             url = self.args.url
-            if url.endswith('/'):
-                return url[:-1]
-            return url
-
+            return url[:-1] if url.endswith('/') else url
         protocol = ["http", "https"][self.is_ssl()]
         return protocol + '://%s:%d' % (self.args.host, self.args.port)
 
     def get_request_kwargs(self):
         """Returns keyword arguments which should be passed to functions from the 'requests' library."""
 
-        if not self.is_ssl():
-            return {}
-
-        return {
-            'verify': [self.get_cacert_path(), False][bool(self.args.no_verify)],
-            'cert': (self.get_client_cert_path(), self.get_client_key_path())
-        }
+        return (
+            {
+                'verify': [self.get_cacert_path(), False][
+                    bool(self.args.no_verify)
+                ],
+                'cert': (self.get_client_cert_path(), self.get_client_key_path()),
+            }
+            if self.is_ssl()
+            else {}
+        )

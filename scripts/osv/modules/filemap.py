@@ -13,12 +13,16 @@ def _reduce_path(path, regex, substitution):
     return path
 
 def _pattern_to_regex(path):
-    bad_token = re.search(r'(([^/]\*\*)|(\*\*[^/]))', path)
-    if bad_token:
-        raise Exception("'**' pattern may only be a in place of a full path component, but found: %s"
-             % bad_token.group(1))
+    if bad_token := re.search(r'(([^/]\*\*)|(\*\*[^/]))', path):
+        raise Exception(
+            (
+                "'**' pattern may only be a in place of a full path component, but found: %s"
+                % bad_token[1]
+            )
+        )
 
-    path = '^' + re.escape(path) + '$'
+
+    path = f'^{re.escape(path)}$'
     # Python 3.7 and above does NOT escape '/' so we need to detect it and handle accordingly
     slash_escaped = '\\/' in path
 
@@ -86,26 +90,29 @@ class FileMap(object):
                     raise Exception("Guest path '%s' already mapped to '%s', tried to remap to '%s'"
                         % (guest, old_mapping, host))
             if allow_symlink and os.path.islink(host):
-                host = '!' + host
+                host = f'!{host}'
             guest_to_host[guest] = host
 
         for m in self.mappings:
             root = m.host_path
             if not os.path.isabs(root):
-                raise Exception('Relative paths not allowed: ' + root)
+                raise Exception(f'Relative paths not allowed: {root}')
 
             if not m.guest_path:
-                raise Exception('Unfinished mapping for %s. Did you forget to call .to()?' % root)
+                raise Exception(
+                    f'Unfinished mapping for {root}. Did you forget to call .to()?'
+                )
+
 
             if not os.path.lexists(root):
-                raise Exception('Path does not exist: ' + root)
+                raise Exception(f'Path does not exist: {root}')
 
             if (os.path.isfile(root)
                 or (os.path.islink(root) and m._allow_symlink)):
                 if m.filters:
                     raise Exception('Filters only allowed when adding directory')
                 if m._allow_symlink:
-                    root = '!' + root
+                    root = f'!{root}'
                 add(m.guest_path, root, m._allow_symlink)
             else:
                 for dirpath, dirnames, filenames in os.walk(root):
@@ -115,19 +122,18 @@ class FileMap(object):
                         if m.includes_path(rel_path):
                             add(os.path.join(m.guest_path, rel_path), host_path, m._allow_symlink)
 
-        for mapping in guest_to_host.items():
-            yield mapping
+        yield from guest_to_host.items()
 
     def expand_symlinks(self):
         for s in self.symlinks:
             if not s.old_path:
-                raise Exception('Unfinished symlink mapping for ' + mapping.new_path)
+                raise Exception(f'Unfinished symlink mapping for {mapping.new_path}')
             yield (s.new_path, s.old_path)
 
 class Mapping(object):
     def __init__(self, host_path):
         if _path_has_pattern(host_path):
-            raise Exception('Host path must not be a pattern: ' + host_path)
+            raise Exception(f'Host path must not be a pattern: {host_path}')
 
         self.host_path = host_path
         self.has_include = False
@@ -155,7 +161,10 @@ class Mapping(object):
 
     def to(self, guest_path):
         if self.guest_path:
-            raise Exception('Already mapped to %s, tried to remap to %s' % (self.guest_path, guest_path))
+            raise Exception(
+                f'Already mapped to {self.guest_path}, tried to remap to {guest_path}'
+            )
+
         self.guest_path = guest_path
         return self
 

@@ -16,7 +16,7 @@ class Metadata(object):
 
 def wait_for(ec2_obj, status='available'):
     while ec2_obj.state != status:
-        print('object status {} wanted {}'.format(ec2_obj.state, status))
+        print(f'object status {ec2_obj.state} wanted {status}')
         time.sleep(1)
         ec2_obj.reload()
 
@@ -41,41 +41,50 @@ def make_snapshot(input):
                             AvailabilityZone=metadata.availability_zone(),
                             VolumeType='gp2',
                             )
-    print('Waiting for {}'.format(vol.id))
+    print(f'Waiting for {vol.id}')
     wait_for(vol)
-    print('STEP 1: Took {} seconds to create volume {}'.format(time.time() - time_point,vol.id))
-    print('STEP 2: Attaching {} to {}'.format(vol.id, metadata.instance_id())) # aws ec2 attach-volume
+    print(
+        f'STEP 1: Took {time.time() - time_point} seconds to create volume {vol.id}'
+    )
+
+    print(f'STEP 2: Attaching {vol.id} to {metadata.instance_id()}')
     time_point = time.time()
     vol.attach_to_instance(InstanceId=metadata.instance_id(), Device='xvdf')
     while not os.path.exists('/dev/xvdf'):
         print('waiting for volume to attach')
         time.sleep(1)
-    print('STEP 2: Took {} seconds to attach volume to instance {}'.format(time.time() - time_point,metadata.instance_id()))
+    print(
+        f'STEP 2: Took {time.time() - time_point} seconds to attach volume to instance {metadata.instance_id()}'
+    )
+
     print('STEP 3: Copying image')
     time_point = time.time()
     copy_image(input, '/dev/xvdf')
-    print('STEP 3: Took {} seconds to copy image'.format(time.time() - time_point))
-    print('STEP 4; Detaching volume {}'.format(vol.id))
+    print(f'STEP 3: Took {time.time() - time_point} seconds to copy image')
+    print(f'STEP 4; Detaching volume {vol.id}')
     time_point = time.time()
     vol.detach_from_instance()
-    print('STEP 4: Took {} seconds to detach volume'.format(time.time() - time_point))
-    print('STEP 5: Creating snapshot from {}'.format(vol.id)) # aws ec2 create-snapshot
+    print(f'STEP 4: Took {time.time() - time_point} seconds to detach volume')
+    print(f'STEP 5: Creating snapshot from {vol.id}')
     time_point = time.time()
     snap = vol.create_snapshot()
     wait_for(snap, 'completed')
-    print('STEP 5: Took {} seconds to create snapshot {}'.format(time.time() - time_point,snap.id))
-    print('STEP 6: Deleting volume {}'.format(vol.id))
+    print(
+        f'STEP 5: Took {time.time() - time_point} seconds to create snapshot {snap.id}'
+    )
+
+    print(f'STEP 6: Deleting volume {vol.id}')
     time_point = time.time()
     vol.delete()
-    print('STEP 6: Took {} seconds to delete volume'.format(time.time() - time_point))
-    print('Snapshot {} created\n'.format(snap))
+    print(f'STEP 6: Took {time.time() - time_point} seconds to delete volume')
+    print(f'Snapshot {snap} created\n')
     return snap.id
 
 def make_ami_from_snapshot(name,snapshot_id):
     metadata = Metadata()
     print('Connecting')
     ec2 = boto3.resource('ec2',region_name=metadata.region())
-    print('STEP 7: Registering image from {}'.format(snapshot_id)) # aws ec2 register-image
+    print(f'STEP 7: Registering image from {snapshot_id}')
     time_point = time.time()
     ami = ec2.register_image(Name=name,
                              Architecture='x86_64',
@@ -90,8 +99,8 @@ def make_ami_from_snapshot(name,snapshot_id):
                                      }
                                  },
                              ])
-    print('STEP 7: Took {} seconds to create ami'.format(time.time() - time_point,ami))
-    print('ami {} created\n'.format(ami))
+    print(f'STEP 7: Took {time.time() - time_point} seconds to create ami')
+    print(f'ami {ami} created\n')
     return ami
 
 if __name__ == "__main__":

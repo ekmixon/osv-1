@@ -36,9 +36,7 @@ def phys_cast(addr, type):
     return gdb.parse_and_eval('0x%x' % (addr + phys_mem)).cast(type.pointer())
 
 def values(_dict):
-    if hasattr(_dict, 'viewvalues'):
-        return _dict.viewvalues()
-    return _dict.values()
+    return _dict.viewvalues() if hasattr(_dict, 'viewvalues') else _dict.values()
 
 def read_vector(v):
     impl = v['_M_impl']
@@ -57,19 +55,20 @@ def load_elf(path, base):
                          '.gnu_debugdata',
                          '.shstrtab',
                          ]
-    for line in os.popen('readelf -WS ' + path):
-        m = re.match(r'\s*\[ *\d+\]\s+([\.\w\d_]+)\s+\w+\s+([0-9a-f]+).*', line)
-        if m:
-            section = m.group(1)
+    for line in os.popen(f'readelf -WS {path}'):
+        if m := re.match(
+            r'\s*\[ *\d+\]\s+([\.\w\d_]+)\s+\w+\s+([0-9a-f]+).*', line
+        ):
+            section = m[1]
             if section == 'NULL':
                 continue
-            addr = hex(int(m.group(2), 16) + base)
+            addr = hex(int(m[2], 16) + base)
             if section == '.text':
                 text_addr = addr
             if section not in unwanted_sections:
-                args += ' -s %s %s' % (section, addr)
+                args += f' -s {section} {addr}'
 
-    gdb.execute('add-symbol-file %s %s %s' % (path, text_addr, args))
+    gdb.execute(f'add-symbol-file {path} {text_addr} {args}')
 
 class syminfo_resolver(object):
     cache = dict()
@@ -98,8 +97,8 @@ class syminfo_resolver(object):
         return result
 
     @classmethod
-    def clear_cache(clazz):
-        clazz.cache.clear()
+    def clear_cache(cls):
+        cls.cache.clear()
 
 symbol_resolver = syminfo_resolver()
 
@@ -109,7 +108,7 @@ def symbol_formatter(src_addr):
         ret += ' ('
         ret += src_addr.filename
         if src_addr.line:
-            ret += ':' + str(src_addr.line)
+            ret += f':{str(src_addr.line)}'
         ret += ')'
     return ret
 
@@ -128,19 +127,19 @@ class Manifest(object):
 
     def find(self, path):
         '''Try to locate file with help of usr.manifest'''
-        files = [ff.split(':', 1)[1].strip() for ff in self.data if ff.split(':', 1)[0].strip() == path]
-        if files:
+        if files := [
+            ff.split(':', 1)[1].strip()
+            for ff in self.data
+            if ff.split(':', 1)[0].strip() == path
+        ]:
             file = files[-1]  # the last line in usr.manifest wins
         else:
             file = ""
         file = self.resolve_symlink(file)
-        print('manifest.find_file: path=%s, found file=%s' % (path, file))
+        print(f'manifest.find_file: path={path}, found file={file}')
         # usr.manifest contains lines like "%(gccbase)s/lib64/libgcc_s.so.1" too.
         # Filter out such cases.
-        if os.path.exists(file):
-            return file
-        else:
-            return ""
+        return file if os.path.exists(file) else ""
 
     def resolve_symlink(self, file):
         '''If file is a symlink, try to resolve it with help of usr.manifest'''
@@ -155,9 +154,7 @@ manifest = Manifest()
 
 def translate(path):
     '''given a path, try to find it on the host OS'''
-    # First, try to locate file with help of usr.manifest
-    file = manifest.find(path)
-    if file:
+    if file := manifest.find(path):
         return file
     # Next, search for file in configured directories
     name = os.path.basename(path)
@@ -175,10 +172,8 @@ class Connect(gdb.Command):
                              gdb.COMMAND_NONE,
                              gdb.COMPLETE_NONE)
     def invoke(self, arg, from_tty):
-        host_port = 'localhost:1234'
-        if arg:
-            host_port = arg.split()[0]
-        gdb.execute('target remote %s' % host_port)
+        host_port = arg.split()[0] if arg else 'localhost:1234'
+        gdb.execute(f'target remote {host_port}')
         global status_enum
         try:
             status_enum.running = gdb.parse_and_eval('sched::thread::status::running')
@@ -229,10 +224,7 @@ def intrusive_set_root_node(v):
 
 def intrusive_list_root_node(v):
     a = v['data_']['root_plus_size_']
-    if has_field(a, 'm_header'):
-        return a['m_header']
-    else:
-        return a['root_']
+    return a['m_header'] if has_field(a, 'm_header') else a['root_']
 
 #
 # free_page_ranges generator, use pattern:
@@ -249,20 +241,15 @@ def free_page_ranges():
             page_range = node.cast(gdb.lookup_type('void').pointer()) - tree_offset
             page_range = page_range.cast(gdb.lookup_type('memory::page_range').pointer())
 
-            for x in free_page_ranges_tree(node['left_']):
-                yield x
-
+            yield from free_page_ranges_tree(node['left_'])
             yield page_range
 
-            for x in free_page_ranges_tree(node['right_']):
-                yield x
+            yield from free_page_ranges_tree(node['right_'])
 
     fpr = gdb.lookup_global_symbol('memory::free_page_ranges').value()
     node = intrusive_set_root_node(fpr['_free_huge'])
-    for x in free_page_ranges_tree(node):
-        yield x
-
-    for i in range(0, 16):
+    yield from free_page_ranges_tree(node)
+    for i in range(16):
         free_list = fpr['_free'][i]
         node = intrusive_list_root_node(free_list)
         first_addr = node.cast(gdb.lookup_type('void').pointer())
@@ -282,7 +269,7 @@ def free_page_ranges():
                 break
 
 def vma_list(node=None):
-    if node == None:
+    if node is None:
         fpr = gdb.lookup_global_symbol('mmu::vma_list').value()
         node = intrusive_set_root_node(fpr)
 
@@ -294,13 +281,10 @@ def vma_list(node=None):
         vma = node.cast(gdb.lookup_type('void').pointer()) - offset
         vma = vma.cast(gdb.lookup_type('mmu::vma').pointer())
 
-        for x in vma_list(node['left_']):
-            yield x
-
+        yield from vma_list(node['left_'])
         yield vma
 
-        for x in vma_list(node['right_']):
-            yield x
+        yield from vma_list(node['right_'])
 
 class osv(gdb.Command):
     def __init__(self):
@@ -355,7 +339,11 @@ class osv_waiters(gdb.Command):
 # Returns a u64 value from a stats given a field name.
 #
 def get_stat_by_name(stats, stats_cast, field):
-    return int(gdb.parse_and_eval('('+str(stats_cast)+' '+str(stats)+')->'+str(field)+'.value.ui64'))
+    return int(
+        gdb.parse_and_eval(
+            f'({str(stats_cast)} {str(stats)})->{str(field)}.value.ui64'
+        )
+    )
 
 class osv_zfs(gdb.Command):
     def __init__(self):
@@ -592,14 +580,11 @@ class osv_zfs(gdb.Command):
                    (zfetch_misses, zfetch_misses_perc))
 
 def bits2str(bits, chars):
-    r = ''
     empty_str = 'none'
     width = max(len(chars), len(empty_str))
     if bits == 0:
         return empty_str.ljust(width)
-    for i in range(len(chars)):
-        if bits & (1 << i):
-            r += chars[i]
+    r = ''.join(chars[i] for i in range(len(chars)) if bits & (1 << i))
     return r.ljust(width)
 
 def permstr(perm):
@@ -618,7 +603,7 @@ class osv_mmap(gdb.Command):
             end = ulong(vma['_range']['_end'])
             flags = flagstr(ulong(vma['_flags']))
             perm = permstr(ulong(vma['_perm']))
-            size = '{:<16}'.format('[%s kB]' % (ulong(end - start)/1024))
+            size = '{:<16}'.format(f'[{ulong(end - start) / 1024} kB]')
 
             if 'F' in flags:
                 file_vma = vma.cast(gdb.lookup_type('mmu::file_vma').pointer())
@@ -648,7 +633,7 @@ class osv_vma_find(gdb.Command):
                 if start <= addr and end > addr:
                     flags = flagstr(ulong(vma['_flags']))
                     perm = permstr(ulong(vma['_perm']))
-                    size = '{:<16}'.format('[%s kB]' % (ulong(end - start)/1024))
+                    size = '{:<16}'.format(f'[{ulong(end - start) / 1024} kB]')
                     print('0x%016x -> vma 0x%016x' % (addr, vma_addr))
                     print('0x%016x 0x%016x %s flags=%s perm=%s' % (start, end, size, flags, perm))
                     break
@@ -683,12 +668,11 @@ class osv_syms(gdb.Command):
         for obj in read_vector(gdb.lookup_global_symbol('elf::program::s_objs').value()):
             base = to_int(obj['_base'])
             obj_path = obj['_pathname']['_M_dataplus']['_M_p'].string()
-            path = translate(obj_path)
-            if not path:
-                print('ERROR: Unable to locate object file for:', obj_path, hex(base))
-            else:
+            if path := translate(obj_path):
                 print(path, hex(base))
                 load_elf(path, base)
+            else:
+                print('ERROR: Unable to locate object file for:', obj_path, hex(base))
 
 class osv_load_elf(gdb.Command):
     def __init__(self):
@@ -702,7 +686,7 @@ class osv_load_elf(gdb.Command):
         path = args_list[0]
         base = int(args_list[1], 0)
         if not os.path.exists(path):
-            gdb.write('Path not found: ' + path + '\n')
+            gdb.write(f'Path not found: {path}' + '\n')
             return
         load_elf(path, base)
 
@@ -764,7 +748,7 @@ def get_template_arg_with_prefix(gdb_type, prefix):
             return arg
 
 def get_base_class_offset(gdb_type, base_class_name):
-    name_pattern = re.escape(base_class_name) + "(<.*>)?$"
+    name_pattern = f"{re.escape(base_class_name)}(<.*>)?$"
     for field in gdb_type.fields():
         if field.is_base_class and re.match(name_pattern, field.name):
             return field.bitpos / 8
@@ -778,7 +762,7 @@ class unordered_map:
     def __init__(self, map_ref):
         self.map_header = map_ref['_M_h']
         map_type = self.map_header.type.strip_typedefs()
-        self.node_type = gdb.lookup_type(str(map_type) +  '::__node_type').pointer()
+        self.node_type = gdb.lookup_type(f'{str(map_type)}::__node_type').pointer()
 
     def begin(self):
         try:
@@ -809,17 +793,19 @@ class intrusive_list:
         self.node_type = list_type.template_argument(0)
         self.root = intrusive_list_root_node(list_ref)
 
-        member_hook = get_template_arg_with_prefix(list_type, "boost::intrusive::member_hook")
-        if member_hook:
+        if member_hook := get_template_arg_with_prefix(
+            list_type, "boost::intrusive::member_hook"
+        ):
             self.link_offset = member_hook.template_argument(2).cast(self.size_t)
         else:
             self.link_offset = get_base_class_offset(self.node_type, "boost::intrusive::list_base_hook")
-            if self.link_offset == None:
-                member_hook = gdb.lookup_type('boost::intrusive::member_hook<sched::timer_base, boost::intrusive::list_member_hook<>, &sched::timer_base::client_hook>')
-                if member_hook:
+            if self.link_offset is None:
+                if member_hook := gdb.lookup_type(
+                    'boost::intrusive::member_hook<sched::timer_base, boost::intrusive::list_member_hook<>, &sched::timer_base::client_hook>'
+                ):
                     self.link_offset = member_hook.template_argument(2).cast(self.size_t)
                 else:
-                    raise Exception("Class does not extend list_base_hook: " + str(self.node_type))
+                    raise Exception(f"Class does not extend list_base_hook: {str(self.node_type)}")
 
     def __iter__(self):
         hook = self.root['next_']
@@ -847,10 +833,7 @@ class vmstate(object):
         gdb.execute('info threads', False, True)
         cpu_list = {}
         for cpu_thread in gdb.selected_inferior().threads():
-            if arch == 'x64':
-                c = x64_cpu(cpu_thread)
-            else:
-                c = aarch64_cpu(cpu_thread)
+            c = x64_cpu(cpu_thread) if arch == 'x64' else aarch64_cpu(cpu_thread)
             cpu_list[c.id] = c
         self.cpu_list = cpu_list
 
@@ -862,10 +845,14 @@ class vmstate(object):
         stack = thread['_attr']['_stack']
         stack_begin = ulong(stack['begin'])
         stack_size = ulong(stack['size'])
-        for c in values(self.cpu_list):
-            if c.sp > stack_begin and c.sp <= stack_begin + stack_size:
-                return c
-        return None
+        return next(
+            (
+                c
+                for c in values(self.cpu_list)
+                if c.sp > stack_begin and c.sp <= stack_begin + stack_size
+            ),
+            None,
+        )
 
 class thread_context(object):
     def __init__(self, thread, state):
@@ -910,22 +897,22 @@ class thread_context(object):
             self.new_x29 = thread['_state']['fp'].cast(ulong_type)
     def __reset_old_pointers(self):
         if arch == 'x64':
-            gdb.execute('set $rsp = %s' % self.old_rsp)
-            gdb.execute('set $rip = %s' % self.old_rip)
-            gdb.execute('set $rbp = %s' % self.old_rbp)
+            gdb.execute(f'set $rsp = {self.old_rsp}')
+            gdb.execute(f'set $rip = {self.old_rip}')
+            gdb.execute(f'set $rbp = {self.old_rbp}')
         else:
-            gdb.execute('set $sp = %s' % self.old_sp)
-            gdb.execute('set $pc = %s' % self.old_pc)
-            gdb.execute('set $x29 = %s' % self.old_x29)
+            gdb.execute(f'set $sp = {self.old_sp}')
+            gdb.execute(f'set $pc = {self.old_pc}')
+            gdb.execute(f'set $x29 = {self.old_x29}')
     def __reset_new_pointers(self):
         if arch == 'x64':
-            gdb.execute('set $rsp = %s' % self.new_rsp)
-            gdb.execute('set $rip = %s' % self.new_rip)
-            gdb.execute('set $rbp = %s' % self.new_rbp)
+            gdb.execute(f'set $rsp = {self.new_rsp}')
+            gdb.execute(f'set $rip = {self.new_rip}')
+            gdb.execute(f'set $rbp = {self.new_rbp}')
         else:
-            gdb.execute('set $sp = %s' % self.new_sp)
-            gdb.execute('set $pc = %s' % self.new_pc)
-            gdb.execute('set $x29 = %s' % self.new_x29)
+            gdb.execute(f'set $sp = {self.new_sp}')
+            gdb.execute(f'set $pc = {self.new_pc}')
+            gdb.execute(f'set $x29 = {self.new_x29}')
 
 def exit_thread_context():
     global active_thread_context
@@ -933,17 +920,16 @@ def exit_thread_context():
         active_thread_context.__exit__()
         active_thread_context = None
 
-def enum_value (type_name, val_name):
+def enum_value(type_name, val_name):
     for field in gdb.lookup_type(type_name).fields():
-        if field.name == (type_name + "::" + val_name):
+        if field.name == f"{type_name}::{val_name}":
             return field.enumval
-    raise Exception('value %s not found in enum %s' % (val_name, type_name))
+    raise Exception(f'value {val_name} not found in enum {type_name}')
 
 timer_state_expired = enum_value('sched::timer_base::state', 'expired')
 
 def show_thread_timers(t):
-    timer_list = intrusive_list(t['_active_timers'])
-    if timer_list:
+    if timer_list := intrusive_list(t['_active_timers']):
         gdb.write('    timers:')
         for timer in timer_list:
             expired = '*' if timer['_state'] == timer_state_expired else ''
@@ -952,10 +938,7 @@ def show_thread_timers(t):
         gdb.write('\n')
 
 def get_function_name(frame):
-    if frame.function():
-        return frame.function().name
-    else:
-        return '??'
+    return frame.function().name if frame.function() else '??'
 
 class ResolvedFrame:
     def __init__(self, frame, file_name, line, func_name):
@@ -986,9 +969,7 @@ def traverse_resolved_frames(frame):
         frame = frame.older()
 
 def strip_dotdot(path):
-    if path[:6] == "../../":
-        return path[6:]
-    return path
+    return path[6:] if path[:6] == "../../" else path
 
 def find_or_give_last(predicate, seq):
     last = None
@@ -1027,7 +1008,7 @@ class osv_info_threads(gdb.Command):
     def invoke(self, arg, for_tty):
         gdb.write('  id  address             name            cpu  status         vruntime  total_cpu_time')
 
-        show_location = not '--no_location' in arg
+        show_location = '--no_location' not in arg
         if show_location:
            gdb.write(' location\n')
         else:
@@ -1064,15 +1045,12 @@ class osv_info_threads(gdb.Command):
                     fr = find_or_give_last(is_interesting, traverse_resolved_frames(newest_frame))
 
                     if fr:
-                        location = '%s at %s:%s' % (fr.func_name, strip_dotdot(fr.file_name), fr.line)
+                        location = f'{fr.func_name} at {strip_dotdot(fr.file_name)}:{fr.line}'
                     else:
                         location = '??'
 
                 if cpu:
-                    if arch == 'x64':
-                        cpu_id = cpu['arch']['acpi_id']
-                    else:
-                        cpu_id = cpu['arch']['mpid']
+                    cpu_id = cpu['arch']['acpi_id'] if arch == 'x64' else cpu['arch']['mpid']
                 else:
                     cpu_id = '?'
 
@@ -1116,7 +1094,7 @@ class osv_info_callouts(gdb.Command):
         for desc in callouts:
             id = int(desc[0])
             addr = desc[1]
-            callout = gdb.parse_and_eval('(struct callout *)' + addr)
+            callout = gdb.parse_and_eval(f'(struct callout *){addr}')
             fname = callout['c_fn']
 
             # time
@@ -1132,9 +1110,9 @@ class osv_info_callouts(gdb.Command):
             f = int(callout['c_flags'])
 
             flags = ("0x%04x " % f) + \
-                    ("A" if (callout['c_flags'] & CALLOUT_ACTIVE) else "") + \
-                    ("P" if (callout['c_flags'] & CALLOUT_PENDING) else "") + \
-                    ("C" if (callout['c_flags'] & CALLOUT_COMPLETED) else "")
+                        ("A" if (callout['c_flags'] & CALLOUT_ACTIVE) else "") + \
+                        ("P" if (callout['c_flags'] & CALLOUT_PENDING) else "") + \
+                        ("C" if (callout['c_flags'] & CALLOUT_COMPLETED) else "")
 
             # dispatch time ns  ticks callout function
             gdb.write("%-5d%-40s%-40s%-30s%-10s\n" %
@@ -1192,7 +1170,7 @@ def setup_libstdcxx():
     # But because OSv is statically linked, we miss that auto-loading, so we
     #  need to look for, and run, this script explicitly.
     sys.path += [glob('/usr/share/gcc-*/python')[0]]
-    for base, dirnames, filenames in os.walk(gdb.PYTHONDIR + '/../auto-load'):
+    for base, dirnames, filenames in os.walk(f'{gdb.PYTHONDIR}/../auto-load'):
         for filename in fnmatch.filter(filenames, 'libstdc++.so.*-gdb.py'):
             script = os.path.join(base, filename)
             exec(compile(open(script).read(), script, 'exec'))
@@ -1288,7 +1266,7 @@ def all_traces():
             thread, thread_name, time, cpu, flags = unpacker.unpack('Q16sQII')
             thread_name = thread_name.partition(b'\0')[0].decode()
 
-            tp = tracepoints.get(tp_key, None)
+            tp = tracepoints.get(tp_key)
             if not tp:
                 tp_ref = gdb.Value(tp_key).cast(tp_ptr)
 
@@ -1319,6 +1297,7 @@ def dump_trace(out_func):
 
     def lookup_tp(name):
         return gdb.lookup_global_symbol(name).value().dereference()
+
     tp_fn_entry = lookup_tp('gdb_trace_function_entry')
     tp_fn_exit = lookup_tp('gdb_trace_function_exit')
 
@@ -1350,15 +1329,14 @@ def dump_trace(out_func):
             trace_function(indent, '->', trace.data)
         elif tp.key == tp_fn_exit.address:
             indents[thread] -= 1
-            if indents[thread] < 0:
-                indents[thread] = 0
+            indents[thread] = max(indents[thread], 0)
             indent = '  ' * indents[thread]
             trace_function(indent, '<-', trace.data)
         else:
             out_func('%s\n' % trace.format(bt_formatter))
 
 def set_leak(val):
-    gdb.parse_and_eval('memory::tracker_enabled=%s' % val)
+    gdb.parse_and_eval(f'memory::tracker_enabled={val}')
 
 def show_leak():
     tracker = gdb.parse_and_eval('memory::tracker')

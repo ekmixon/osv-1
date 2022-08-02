@@ -33,9 +33,8 @@ class Basetest(unittest.TestCase):
 
     @classmethod
     def get_json_api_from_directory(cls, directory, name):
-        json_data = open(os.path.join(directory, name))
-        data = json.load(json_data)
-        json_data.close()
+        with open(os.path.join(directory, name)) as json_data:
+            data = json.load(json_data)
         return data
 
     def assert_between(self, msg, low, high, val):
@@ -43,14 +42,18 @@ class Basetest(unittest.TestCase):
         self.assertLessEqual(val, high, msg=msg)
 
     def assert_key_in(self, key, dic):
-        self.assertTrue(key in dic, key + " not found in dictionary " + json.dumps(dic))
+        self.assertTrue(key in dic, f"{key} not found in dictionary {json.dumps(dic)}")
 
     @classmethod
     def get_api(cls, api_definition, nickname):
-        for api in api_definition["apis"]:
-            if api["operations"][0]["nickname"] == nickname:
-                return api
-        return None
+        return next(
+            (
+                api
+                for api in api_definition["apis"]
+                if api["operations"][0]["nickname"] == nickname
+            ),
+            None,
+        )
 
     @classmethod
     def path_by_nick(cls, api_definition, nickname):
@@ -70,10 +73,7 @@ class Basetest(unittest.TestCase):
         try:
             s.connect((cls._client.get_host(), cls._client.get_port()))
             s.close()
-            if cls.config.check_jvm:
-                return cls.is_jvm_up()
-            else:
-                return True
+            return cls.is_jvm_up() if cls.config.check_jvm else True
         except socket.error as e:
             print(e)
             return False
@@ -130,15 +130,20 @@ class Basetest(unittest.TestCase):
         if cls.config.hypervisor == 'firecracker':
             args += [cls.config.run_script, "-m 2048M", "-n", "-c 4"]
             if cls.config.kernel_path:
-               print('Using kernel at %s' % cls.config.kernel_path)
-               args += ['-k', cls.config.kernel_path]
+                print(f'Using kernel at {cls.config.kernel_path}')
+                args += ['-k', cls.config.kernel_path]
         elif cls.config.use_sudo:
             args += ["/usr/bin/sudo", cls.config.run_script, "-n"]
         else:
-            args += [cls.config.run_script, "--forward", "tcp::" + str(cls._client.get_port()) + "-:" + str(cls._client.get_port())]
+            args += [
+                cls.config.run_script,
+                "--forward",
+                f"tcp::{str(cls._client.get_port())}-:{str(cls._client.get_port())}",
+            ]
+
 
         if cls.config.kernel_path and cls.config.hypervisor != 'firecracker':
-            print('Using kernel at %s' % cls.config.kernel_path)
+            print(f'Using kernel at {cls.config.kernel_path}')
             args += ['-k', '--kernel-path', cls.config.kernel_path]
 
         if cls.config.cmd:
@@ -161,7 +166,7 @@ class Basetest(unittest.TestCase):
             pass
         retry = 10
 
-        while cls.os_process.poll() == None:
+        while cls.os_process.poll() is None:
             retry -= 1
             if retry == 0:
                 raise Exception("Fail to shutdown server")

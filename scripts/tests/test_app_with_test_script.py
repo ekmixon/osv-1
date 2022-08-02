@@ -6,16 +6,13 @@ import runpy
 def run(command, hypervisor_name, host_port, guest_port, script_path, image_path=None,
         start_line=None, end_line=None, use_vhost_networking=False, kernel_path=None):
 
-    py_args = []
-    if image_path != None:
-        py_args = ['--image', image_path]
-
+    py_args = ['--image', image_path] if image_path != None else []
     if kernel_path != None:
-       print('Using kernel at %s' % kernel_path)
-       if hypervisor_name == 'firecracker':
-          py_args += ['-k', kernel_path]
-       else:
-          py_args += ['-k', '--kernel-path', kernel_path]
+        print(f'Using kernel at {kernel_path}')
+        if hypervisor_name == 'firecracker':
+           py_args += ['-k', kernel_path]
+        else:
+           py_args += ['-k', '--kernel-path', kernel_path]
 
     if use_vhost_networking and hypervisor_name != 'firecracker':
         app = run_command_in_guest(command, hypervisor=hypervisor_name, run_py_args=py_args + ['-nv'])
@@ -40,13 +37,12 @@ def run(command, hypervisor_name, host_port, guest_port, script_path, image_path
     else:
         print("  FAILURE")
 
-    status_file_name = os.getenv('STATUS_FILE')
-    if status_file_name:
-       with open(status_file_name, "a+") as status_file:
-         if script_out['success'] == True:
-            status_file.write("  SUCCESS\n")
-         else:
-            status_file.write("  FAILURE\n")
+    if status_file_name := os.getenv('STATUS_FILE'):
+        with open(status_file_name, "a+") as status_file:
+          if script_out['success'] == True:
+             status_file.write("  SUCCESS\n")
+          else:
+             status_file.write("  FAILURE\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='test_app')
@@ -70,13 +66,13 @@ if __name__ == "__main__":
     cmdargs = parser.parse_args()
 
     hypervisor_name = 'qemu'
-    if cmdargs.hypervisor != None:
-        hypervisor_name = cmdargs.hypervisor
-    else:
+    if cmdargs.hypervisor is None:
         hypervisor_from_env = os.getenv('OSV_HYPERVISOR')
         if hypervisor_from_env != None:
             hypervisor_name = hypervisor_from_env
 
+    else:
+        hypervisor_name = cmdargs.hypervisor
     if hypervisor_name == 'firecracker':
         os.environ['OSV_HOSTNAME'] = '172.16.0.2'
     elif cmdargs.vhost:
@@ -89,7 +85,7 @@ if __name__ == "__main__":
         kernel_path = os.getenv('OSV_KERNEL')
 
     if kernel_path and not os.path.exists(kernel_path):
-        print("The file %s does not exist!" % kernel_path)
+        print(f"The file {kernel_path} does not exist!")
         sys.exit(-1)
 
     set_verbose_output(True)

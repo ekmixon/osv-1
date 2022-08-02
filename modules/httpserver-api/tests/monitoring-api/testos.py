@@ -47,6 +47,12 @@ class testos(basetest.Basetest):
         self.assert_between(path, ctime + 1000, ctime + 3000, val["time_ms"])
         idle_thread = next((item for item in val["list"] if item["name"] == "idle1"), None)
         idle1 = idle_thread["cpu_ms"]
-        self.assert_between(path + " idle thread cputime was" + str(idle)+
-                            " new time=" + str(idle1), idle + 1000, idle + 3000, idle1)
+        self.assert_between(
+            (f"{path} idle thread cputime was{str(idle)}" + " new time=")
+            + str(idle1),
+            idle + 1000,
+            idle + 3000,
+            idle1,
+        )
+
         self.assertEqual(id, idle_thread["id"])

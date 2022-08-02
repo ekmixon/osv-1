@@ -30,7 +30,7 @@ def kill_unfsd():
         shutil.rmtree(export_dir, ignore_errors=True)
 
 dirname = os.path.dirname(os.path.abspath(__file__))
-UNFSD = dirname + "/unfsd.bin"
+UNFSD = f"{dirname}/unfsd.bin"
 
 def run_test():
     global proc, conf_path, export_dir
@@ -58,17 +58,15 @@ def run_test():
                              stderr = sys.stderr,
                              shell = False)
     atexit.register(kill_unfsd)
-    test = SingleCommandTest('nfs-test',
-        "/tst-nfs.so --server 192.168.122.1 --share %s" %
-        export_dir)
+    test = SingleCommandTest(
+        'nfs-test', f"/tst-nfs.so --server 192.168.122.1 --share {export_dir}"
+    )
 
-    line = proc.stdout.readline().decode()
-    while line:
-         print(line)
-         if "/tmp" in line:
-            break
-         line = proc.stdout.readline().decode()
 
+    while line := proc.stdout.readline().decode():
+        print(line)
+        if "/tmp" in line:
+           break
     sys.stdout.write("NFS Test \n")
     sys.stdout.write("Shared directory: [%s]\n" % export_dir)
     sys.stdout.flush()

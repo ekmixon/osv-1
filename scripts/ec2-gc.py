@@ -67,16 +67,13 @@ class BotoObject(object):
         return None
 
     def max_life_time(self):
-        time_hrs = self.get_tag('max_life_time')
-        if time_hrs:
+        if time_hrs := self.get_tag('max_life_time'):
             return int(time_hrs) * 3600
         else:
             return MAX_OBJECT_LIFE_TIME_HRS * 3600
 
     def too_old(self):
-        if self.permanent():
-            return False
-        return self.life_time() > self.max_life_time()
+        return False if self.permanent() else self.life_time() > self.max_life_time()
 
 class Snapshot(BotoObject):
     def __init__(self, boto_snapshot):

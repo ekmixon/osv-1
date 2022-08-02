@@ -51,8 +51,8 @@ class non_isolated_jvm(api.basic_app):
 def expand(text, variables):
     def resolve(m):
         name = m.group('name')
-        if not name in variables:
-            raise Exception('Undefined variable: ' + name)
+        if name not in variables:
+            raise Exception(f'Undefined variable: {name}')
         return variables[name]
 
     return re.sub(r'\${(?P<name>.*)}', resolve, text)
@@ -66,10 +66,10 @@ def append_manifest(file_path, dst_file, variables={}):
 
 def generate_manifests(modules, basic_apps, usrskel='default'):
     for manifest_type in ["usr", "bootfs"]:
-        manifest_name = "%s.manifest" % manifest_type
-        print("Preparing %s" % manifest_name)
+        manifest_name = f"{manifest_type}.manifest"
+        print(f"Preparing {manifest_name}")
 
-        manifest_skel = "%s.skel" % manifest_name
+        manifest_skel = f"{manifest_name}.skel"
         if manifest_type == "usr" and usrskel != "default":
             manifest_skel = usrskel
 
@@ -83,13 +83,13 @@ def generate_manifests(modules, basic_apps, usrskel='default'):
                 module_manifest = os.path.join(module.local_path, manifest_name)
 
                 if os.path.exists(module_manifest):
-                    print("Appending %s to %s" % (module_manifest, manifest_name))
+                    print(f"Appending {module_manifest} to {manifest_name}")
                     append_manifest(module_manifest, manifest, variables={
                         'MODULE_DIR': module.local_path,
                         'OSV_BASE': resolve.get_osv_base()
                     })
 
-                filemap_attr = '%s_files' % manifest_type
+                filemap_attr = f'{manifest_type}_files'
                 if hasattr(module, filemap_attr):
                     filemap.as_manifest(getattr(module, filemap_attr), manifest.write)
 
@@ -97,38 +97,41 @@ def generate_manifests(modules, basic_apps, usrskel='default'):
                 app.prepare_manifest(resolve.get_build_path(), manifest_type, manifest)
 
 def format_args(args):
-    if isinstance(args, str):
-        return args
-    else:
-        return ' '.join(args)
+    return args if isinstance(args, str) else ' '.join(args)
 
 def get_command_line(basic_apps):
     args = [format_args(app.get_launcher_args()) for app in basic_apps]
     return '&'.join((a for a in args if a))
 
 def make_cmd(cmdline, j, jobserver):
-    ret = 'make ' + cmdline
+    ret = f'make {cmdline}'
     if jobserver is not None:
-        ret += ' -j --jobserver-fds=' + jobserver
+        ret += f' -j --jobserver-fds={jobserver}'
     elif j == '-':
         ret += ' -j'
     elif j is not None:
-        ret += ' -j' + j
+        ret += f' -j{j}'
     return ret
 
 def make_modules(modules, args):
     for module in modules:
-        if os.path.exists(os.path.join(module.local_path, 'Makefile')):
-            if subprocess.call(make_cmd('module', j=args.j, jobserver=args.jobserver_fds),
-                               shell=True, cwd=module.local_path):
-                raise Exception('make failed for ' + module.name)
+        if os.path.exists(
+            os.path.join(module.local_path, 'Makefile')
+        ) and subprocess.call(
+            make_cmd('module', j=args.j, jobserver=args.jobserver_fds),
+            shell=True,
+            cwd=module.local_path,
+        ):
+            raise Exception(f'make failed for {module.name}')
 
 def flatten_list(elememnts):
     if not elememnts:
         return []
-    if not isinstance(elememnts, list):
-        return [elememnts]
-    return reduce(operator.add, [flatten_list(e) for e in elememnts])
+    return (
+        reduce(operator.add, [flatten_list(e) for e in elememnts])
+        if isinstance(elememnts, list)
+        else [elememnts]
+    )
 
 def get_basic_apps(apps):
     basic_apps = []
@@ -143,7 +146,7 @@ def get_basic_apps(apps):
                 _jvm = non_isolated_jvm()
             _jvm.add(app)
         else:
-            raise Exception("Unknown app type: " + str(app))
+            raise Exception(f"Unknown app type: {str(app)}")
 
     if _jvm.has_any_app():
         basic_apps.append(_jvm)
@@ -152,7 +155,7 @@ def get_basic_apps(apps):
 
 def generate_cmdline(apps):
     cmdline_path = os.path.join(resolve.get_build_path(), "cmdline")
-    print("Saving command line to %s" % cmdline_path)
+    print(f"Saving command line to {cmdline_path}")
     with open(cmdline_path, "w") as cmdline_file:
         if apps:
             cmdline_file.write(get_command_line(apps))
@@ -164,9 +167,9 @@ def build(args):
     if args.image_config[0] == "!":
         add_default = False
         args.image_config = args.image_config[1:]
-    image_config_file = os.path.join(image_configs_dir, args.image_config + '.py')
+    image_config_file = os.path.join(image_configs_dir, f'{args.image_config}.py')
     if os.path.exists(image_config_file):
-        print("Using image config: %s" % image_config_file)
+        print(f"Using image config: {image_config_file}")
         config = resolve.local_import(image_config_file)
         run_list = config.get('run', [])
         selected_modules = []
@@ -177,21 +180,24 @@ def build(args):
         # run each of the module's "default" command line, in parallel.
         # You can choose a module's non-default command line, with a dot,
         # e.g.: mgmt.shell use's mgmt's "shell" command line.
-        print("No such image configuration: " + args.image_config + ". Assuming list of modules.")
+        print(
+            f"No such image configuration: {args.image_config}. Assuming list of modules."
+        )
+
         run_list = []
-        disabled_modules = set()
         selected_modules = args.image_config.split(",")
-        for module in selected_modules:
-            if module[0] == '-':
-                disabled_modules.add(module[1:])
+        disabled_modules = {
+            module[1:] for module in selected_modules if module[0] == '-'
+        }
+
         module_names = []
         config = resolve.read_config()
         if add_default and "default" in config:
             module_names += config["default"]
         module_names += selected_modules
-        module_names = [i for i in module_names if not i in disabled_modules]
+        module_names = [i for i in module_names if i not in disabled_modules]
         for missing in list(disabled_modules - set(module_names)):
-             raise Exception("Attempt to disable module %s but not enabled" % missing)
+            raise Exception(f"Attempt to disable module {missing} but not enabled")
 
         for module in module_names:
             if module[0] == '-':
@@ -211,7 +217,12 @@ def build(args):
     if args.add_required_to_manifest:
         modules = resolve.get_required_modules()
     else:
-        modules = list(module for module in resolve.get_required_modules() if module.name in selected_modules)
+        modules = [
+            module
+            for module in resolve.get_required_modules()
+            if module.name in selected_modules
+        ]
+
 
     modules_to_run = resolve.get_modules_to_run()
 
@@ -219,15 +230,14 @@ def build(args):
     if not modules:
         print("  None")
     for module in modules:
-        prefix = "  " + module.name
+        prefix = f"  {module.name}"
         if module in modules_to_run:
-            print(prefix + "." + modules_to_run[module])
+            print(f"{prefix}.{modules_to_run[module]}")
         else:
             print(prefix)
 
     for module, run_config_name in modules_to_run.items():
-        run_config = resolve.get_run_config(module, run_config_name)
-        if run_config:
+        if run_config := resolve.get_run_config(module, run_config_name):
             run_list.append(run_config)
 
     make_modules(modules, args)
@@ -244,12 +254,20 @@ def clean(args):
     for local_path in resolve.all_module_directories():
         if os.path.exists(os.path.join(local_path, 'Makefile')):
             if not args.quiet:
-                print('Cleaning ' + local_path + ' ...')
-            if subprocess.call(make_cmd('-q clean', j=args.j, jobserver=args.jobserver_fds),
-                               shell=True, cwd=local_path, stderr=subprocess.PIPE, **extra_args) != 2:
-                if subprocess.call(make_cmd('clean', j=args.j, jobserver=args.jobserver_fds),
-                                   shell=True, cwd=local_path, **extra_args):
-                    raise Exception('\'make clean\' failed in ' + local_path)
+                print(f'Cleaning {local_path} ...')
+            if subprocess.call(
+                make_cmd('-q clean', j=args.j, jobserver=args.jobserver_fds),
+                shell=True,
+                cwd=local_path,
+                stderr=subprocess.PIPE,
+                **extra_args
+            ) != 2 and subprocess.call(
+                make_cmd('clean', j=args.j, jobserver=args.jobserver_fds),
+                shell=True,
+                cwd=local_path,
+                **extra_args
+            ):
+                raise Exception('\'make clean\' failed in ' + local_path)
 
 if __name__ == "__main__":
     image_configs_dir = resolve.get_images_dir()
@@ -262,8 +280,14 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(help="Command")
 
     build_cmd = subparsers.add_parser("build", help="Build modules")
-    build_cmd.add_argument("-c", "--image-config", action="store", default="default",
-                        help="image configuration name. Looked up in " + image_configs_dir)
+    build_cmd.add_argument(
+        "-c",
+        "--image-config",
+        action="store",
+        default="default",
+        help=f"image configuration name. Looked up in {image_configs_dir}",
+    )
+
     build_cmd.add_argument("--usrskel", action="store", default="default",
                         help="override default usr.manifest.skel")
     build_cmd.add_argument("--no-required", dest="add_required_to_manifest", action="store_false",

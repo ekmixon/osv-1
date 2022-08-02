@@ -71,26 +71,23 @@ def scan_errors(s,scan_for_failed_to_load_object_error=True):
         # supported in the future.
         "Assertion failed",
         "Aborted",
-	    "Error",
-	    "\[BUG\]",
-	    "Failed looking up symbol",
-	    "Failure",
+    "Error",
+    "\[BUG\]",
+    "Failed looking up symbol",
+    "Failure",
         "program exited with status",
         r"program tests/(.*?) returned",
         "Exception was caught while running",
         "at org.junit.runner.JUnitCore.main",
         "ContextFailedException",
         "AppThreadTerminatedWithUncaughtException",
-	    "\[backtrace\]"
+    "\[backtrace\]"
     ]
 
     if scan_for_failed_to_load_object_error:
-        patterns = patterns + ["Failed to load object"]
+        patterns += ["Failed to load object"]
 
-    for pattern in patterns:
-        if re.findall(pattern, s):
-            return True
-    return False
+    return any(re.findall(pattern, s) for pattern in patterns)
 
 class SupervisedProcess:
     def __init__(self, args, show_output=False, show_output_on_error=True, scan_for_failed_to_load_object_error=True, pipe_stdin=False):
@@ -192,7 +189,7 @@ class SupervisedProcess:
         return out
 
     def is_alive(self):
-        return self.process.poll() == None
+        return self.process.poll() is None
 
     @property
     def failed(self):
@@ -210,7 +207,7 @@ class SupervisedProcess:
         return self.line_with_err
 
 def run_command_in_guest(command, **kwargs):
-    common_parameters = ["-e", "--power-off-on-abort " + command]
+    common_parameters = ["-e", f"--power-off-on-abort {command}"]
 
     if kwargs.get('hypervisor') == 'firecracker':
         parameters = ["-m 2048M", "-n", "-c 4"] + common_parameters
@@ -226,9 +223,8 @@ class Guest(SupervisedProcess):
         if hypervisor == 'firecracker':
             run_script = os.path.join(osv_base, "scripts/firecracker.py")
             self.monitor_socket = None
-            physical_nic = os.getenv('OSV_FC_NIC')
-            if physical_nic:
-               args.extend(['-p', physical_nic])
+            if physical_nic := os.getenv('OSV_FC_NIC'):
+                args.extend(['-p', physical_nic])
         else:
             run_script = os.path.join(osv_base, "scripts/run.py")
 
@@ -236,7 +232,7 @@ class Guest(SupervisedProcess):
                 args.append('-H')
 
             self.monitor_socket = 'qemu-monitor'
-            args.extend(['--pass-args=-monitor unix:%s,server,nowait' % self.monitor_socket])
+            args.extend([f'--pass-args=-monitor unix:{self.monitor_socket},server,nowait'])
 
             for rule in forward:
                 args.extend(['--forward', 'tcp::%s-:%s' % rule])
@@ -244,7 +240,7 @@ class Guest(SupervisedProcess):
             args.extend(['--block-device-cache', 'unsafe'])
 
         if _verbose_output:
-            print('Running OSv on %s with parameters: [%s]' % (hypervisor, " ".join(args)))
+            print(f'Running OSv on {hypervisor} with parameters: [{" ".join(args)}]')
 
         SupervisedProcess.__init__(self, [run_script] + run_py_args + args,
             show_output=_verbose_output,
@@ -253,15 +249,16 @@ class Guest(SupervisedProcess):
             pipe_stdin=pipe_stdin)
 
     def kill(self):
-        if self.monitor_socket != None:
+        if self.monitor_socket is None:
+            os.kill(self.process.pid, signal.SIGINT)
+            self.join()
+
+        else:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             s.connect(self.monitor_socket)
             s.send('quit\n'.encode())
             self.join()
             s.close()
-        else:
-            os.kill(self.process.pid, signal.SIGINT)
-            self.join()
 
 def wait_for_line(guest, text):
     return _wait_for_line(guest, lambda line: line == text, text)
@@ -276,7 +273,7 @@ def _wait_for_line(guest, predicate, text):
     for line in guest.read_lines():
         if predicate(line):
             return
-    raise Exception('Text not found in output: ' + text)
+    raise Exception(f'Text not found in output: {text}')
 
 def add_tests(tests_to_add):
     tests.extend(tests_to_add)

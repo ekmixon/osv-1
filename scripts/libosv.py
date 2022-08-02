@@ -26,7 +26,7 @@ version = """
 	.balign 4;
 """%(version_str)
 
-for line in f.readlines():
+for line in f:
     try:
         value, tp, bnd, sym = elf.match(line).groups()
         out.write("%s = 0x%s;\n"%(sym, value))

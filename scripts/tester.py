@@ -36,9 +36,7 @@ def config_merge(a, b, path=None):
         if key in a:
             if isinstance(a[key], dict) and isinstance(b[key], dict):
                 config_merge(a[key], b[key], path + [str(key)])
-            elif a[key] == b[key]:
-                pass # same leaf value
-            else:
+            elif a[key] != b[key]:
                 template = ConfigTemplate(b[key])
                 val = template.substitute(a)
                 a[key] = val

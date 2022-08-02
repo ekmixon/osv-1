@@ -22,7 +22,7 @@ def expand(items):
                            hostname + relpath + filename)
         elif '/&/' in name and hostname.endswith('/&'):
             prefix, suffix = name.split('/&/', 1)
-            yield (prefix + '/' + suffix, hostname[:-1] + suffix)
+            yield (f'{prefix}/{suffix}', hostname[:-1] + suffix)
         else:
             yield (name, hostname)
 
@@ -41,7 +41,7 @@ def unsymlink(f):
                     return f
                 base = os.path.dirname(base)
         else:
-            base = os.path.dirname(f) + '/'
+            base = f'{os.path.dirname(f)}/'
         return unsymlink(base + link)
     except Exception:
         return f
@@ -64,22 +64,22 @@ def strip_file(filename):
     def to_strip(filename):
         ff = os.path.abspath(filename)
         osvdir = os.path.abspath('../..')
-        return ff.startswith(os.getcwd()) or \
-               ff.startswith(osvdir + "/modules") or \
-               ff.startswith(osvdir + "/apps")
+        return (
+            ff.startswith(os.getcwd())
+            or ff.startswith(f"{osvdir}/modules")
+            or ff.startswith(f"{osvdir}/apps")
+        )
+
 
     stripped_filename = filename
     if filename.endswith(".so") and to_strip(filename):
-        stripped_filename = filename[:-3] + "-stripped.so"
+        stripped_filename = f"{filename[:-3]}-stripped.so"
         if not os.path.exists(stripped_filename) \
                 or (os.path.getmtime(stripped_filename) < \
                             os.path.getmtime(filename)):
-            if os.environ.get('STRIP'):
-                strip_cmd = os.environ.get('STRIP')
-            else:
-                strip_cmd = 'strip'
+            strip_cmd = os.environ.get('STRIP') or 'strip'
             ret = subprocess.call([strip_cmd, "-o", stripped_filename, filename])
             if ret != 0:
-                print("Failed stripping %s. Using original." % filename)
+                print(f"Failed stripping {filename}. Using original.")
                 return filename
     return stripped_filename

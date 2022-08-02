@@ -42,7 +42,11 @@ class testjvm(basetest.Basetest):
         mbean = self.curl(path)
         usage = next((item for item in mbean if item["name"] == "UsageThreshold"), None)
         self.assertTrue(usage != None)
-        self.curl(path + "/UsageThreshold?value=" + str(usage["value"] + 1), method='POST')
+        self.curl(
+            f"{path}/UsageThreshold?value=" + str(usage["value"] + 1),
+            method='POST',
+        )
+
         mbean1 = self.curl(path)
         usage1 = next((item for item in mbean1 if item["name"] == "UsageThreshold"), None)
         self.assertEqual(usage["value"] + 1, usage1["value"])

@@ -17,20 +17,19 @@ import signal
 
 hostport = 'localhost:8000'
 if len(sys.argv) > 1:
-    if ':' in sys.argv[1]:
-        hostport = sys.argv[1]
-    else:
-        hostport = sys.argv[1] + ":8000"
-
+    hostport = sys.argv[1] if ':' in sys.argv[1] else f"{sys.argv[1]}:8000"
 if len(sys.argv) <= 2:
     print("Usage: %s host[:port] [tracepoint] ...\n" % sys.argv[0])
     print("Valid values for <tracepoint>:\n")
     # Display list of valid tracepoints
-    result_json = urllib.request.urlopen("http://" + hostport + "/trace/status").read().decode()
+    result_json = (
+        urllib.request.urlopen(f"http://{hostport}/trace/status")
+        .read()
+        .decode()
+    )
+
     result = json.loads(result_json)
-    tracepoints = set()
-    for tracepoint in result:
-        tracepoints.add(tracepoint['name'])
+    tracepoints = {tracepoint['name'] for tracepoint in result}
     for tracepoint in sorted(tracepoints):
         print(tracepoint)
     sys.exit()
@@ -50,10 +49,14 @@ def make_request(url, data, method):
     return url.read().decode()
 
 def delete_all_counters():
-    make_request('http://' + hostport + '/trace/count', None, 'DELETE')
+    make_request(f'http://{hostport}/trace/count', None, 'DELETE')
 
 def enable_counter(name):
-    make_request('http://' + hostport + '/trace/count/' + name, 'enabled=true'.encode(), 'POST')
+    make_request(
+        f'http://{hostport}/trace/count/{name}',
+        'enabled=true'.encode(),
+        'POST',
+    )
 
 delete_all_counters()
 
@@ -68,12 +71,12 @@ for t in tracepoint_names:
     try:
         enable_counter(t)
     except:
-        print("Unrecognized tracepoint %s" % t)
+        print(f"Unrecognized tracepoint {t}")
         delete_all_counters()
         sys.exit()
 
 def get_counts():
-    result_json = make_request('http://' + hostport + '/trace/count', None, 'GET')
+    result_json = make_request(f'http://{hostport}/trace/count', None, 'GET')
     return json.loads(result_json)
 prevcount = collections.defaultdict()
 
@@ -91,7 +94,7 @@ while True:
     start_refresh = time.time()
     result = get_counts()
     newtimems = result['time_ms']
-    freq = dict()
+    freq = {}
     for i in result['list']:
         name = i['name']
         count = i['count']

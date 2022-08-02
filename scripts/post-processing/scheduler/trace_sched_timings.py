@@ -23,15 +23,15 @@ for tr in l:
 
             del sched[fromm]
 
-        to = re.match("to (.*)", info).group(1)
+        to = re.match("to (.*)", info)[1]
         assert (not sched.has_key(to))
         sched[to] = (sec, microsec)
 
 for tr in threads:
-    f = file("thread_%s_timings.txt" % tr, "wt")
+    f = file(f"thread_{tr}_timings.txt", "wt")
 
     for timing in threads[tr]:
         f.write("%d\n" % (timing[0]*1000000 + timing[1]))
-    
+
     f.close()
 

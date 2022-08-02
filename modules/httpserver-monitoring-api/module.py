@@ -17,8 +17,8 @@ api.require('libtools')
 
 # httpserver will run regardless of an explicit command line
 # passed with "run.py -e".
-daemon = api.run_on_init(_exe + ' --access-allow=true &!')
+daemon = api.run_on_init(f'{_exe} --access-allow=true &!')
 
-fg = api.run(_exe + ' --access-allow=true')
+fg = api.run(f'{_exe} --access-allow=true')
 
 default = daemon

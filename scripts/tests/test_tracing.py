@@ -10,15 +10,13 @@ def set_arch(_arch):
 @test
 def tracing_smoke_test():
     global arch
-    run_args = []
-    if os.uname().machine != arch:
-        run_args=['--arch', arch, '-c', '2']
+    run_args = ['--arch', arch, '-c', '2'] if os.uname().machine != arch else []
     path = '/this/path/does/not/exist'
     guest = Guest(['--trace=vfs_*,net_packet*,sched_wait*', '--trace-backtrace', '-e', path],
         hold_with_poweroff=True, show_output_on_error=False, scan_for_failed_to_load_object_error=False,
         run_py_args=run_args)
     try:
-        wait_for_line(guest, 'Failed to load object: %s. Powering off.' % path)
+        wait_for_line(guest, f'Failed to load object: {path}. Powering off.')
 
         trace_script = os.path.join(osv_base, 'scripts', 'trace.py')
 

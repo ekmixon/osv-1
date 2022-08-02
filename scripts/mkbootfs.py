@@ -36,54 +36,52 @@ def main():
     depends = io.StringIO()
     if options.depends:
         depends = open(options.depends, 'w')
-    out = open(options.output, 'wb')
+    with open(options.output, 'wb') as out:
+        depends.write(u'%s: \\\n' % (options.output,))
 
-    depends.write(u'%s: \\\n' % (options.output,))
+        files = read_manifest(options.manifest)
+        files = [(x, y % defines) for (x, y) in files]
+        files = list(expand(files))
+        files = [(x, unsymlink(y)) for (x, y) in files]
+        files = [(x, y) for (x, y) in files if not x.endswith("-stripped.so")]
+        files = [(x, strip_file(y)) for (x, y) in files]
 
-    files = read_manifest(options.manifest)
-    files = [(x, y % defines) for (x, y) in files]
-    files = list(expand(files))
-    files = [(x, unsymlink(y)) for (x, y) in files]
-    files = [(x, y) for (x, y) in files if not x.endswith("-stripped.so")]
-    files = [(x, strip_file(y)) for (x, y) in files]
+        pos = (len(files) + 1) * metadata_size
 
-    pos = (len(files) + 1) * metadata_size
+        for name, hostname in files:
+            type = 0
+            if hostname.startswith("->"):
+                link = hostname[2:]
+                type = 1
+                size = len(link.encode())+1
+            elif os.path.isdir(hostname):
+                size = 0;
+                if not name.endswith("/"):
+                    name += "/"
+            else:
+                size = os.stat(hostname).st_size
 
-    for name, hostname in files:
-        type = 0
-        if hostname.startswith("->"):
-            link = hostname[2:]
-            type = 1
-            size = len(link.encode())+1
-        elif os.path.isdir(hostname):
-            size = 0;
-            if not name.endswith("/"):
-                name += "/"
-        else:
-            size = os.stat(hostname).st_size
+            # FIXME: check if name.encode()'s length is more than 110 (111
+            # minus the necessary null byte) and fail if it is.
+            metadata = struct.pack('QQb111s', size, pos, type, name.encode())
+            out.write(metadata)
+            pos += size
+            depends.write(u'\t%s \\\n' % (hostname,))
 
-        # FIXME: check if name.encode()'s length is more than 110 (111
-        # minus the necessary null byte) and fail if it is.
-        metadata = struct.pack('QQb111s', size, pos, type, name.encode())
-        out.write(metadata)
-        pos += size
-        depends.write(u'\t%s \\\n' % (hostname,))
+        out.write(struct.pack('128s', b''))
 
-    out.write(struct.pack('128s', b''))
+        for name, hostname in files:
+            if os.path.isdir(hostname):
+                continue
+            if hostname.startswith("->"):
+                link = hostname[2:]
+                out.write(link.encode())
+                out.write(b'\0')
+            else:
+                out.write(open(hostname, 'rb').read())
 
-    for name, hostname in files:
-        if os.path.isdir(hostname):
-            continue
-        if hostname.startswith("->"):
-            link = hostname[2:]
-            out.write(link.encode())
-            out.write(b'\0')
-        else:
-            out.write(open(hostname, 'rb').read())
+        depends.write(u'\n\n')
 
-    depends.write(u'\n\n')
-
-    out.close()
     depends.close()
 
 if __name__ == "__main__":

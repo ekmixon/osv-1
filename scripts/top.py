@@ -37,7 +37,7 @@ parser.add_argument('-p','--period', help='refresh period (in seconds)', type=fl
 args = parser.parse_args()
 client = Client(args)
 
-url = client.get_url() + "/os/threads"
+url = f"{client.get_url()}/os/threads"
 ssl_kwargs = client.get_request_kwargs()
 
 # Definition of all possible columns that top.py supports - and how to
@@ -130,8 +130,8 @@ cols += ['NAME']
 # Extract from "columns" only the columns requested by "cols", in that order
 requested_columns = [next(col for col in columns if col['name'] == name) for name in cols]
 
-prev = dict()
-previdles = dict()
+prev = {}
+previdles = {}
 timems = 0
 while True:
     start_refresh = time.time()
@@ -142,7 +142,7 @@ while True:
     print("%d threads " % (len(result['list'])), end='')
 
     cur = collections.defaultdict(dict)
-    idles = dict()
+    idles = {}
 
     for thread in result['list']:
         id = thread['id']
@@ -185,7 +185,7 @@ while True:
         # We now have for all threads the current and previous measurements,
         # so can can sort the threads and calculate the data to display
         for id in sorted(cur, key=lambda x : (cur[x]['cpu_ms']-prev[x].get('cpu_ms',0), prev[x].get('cpu_ms',0)), reverse=True)[:args.lines]:
-            if not 'cpu_ms' in prev[id]:
+            if 'cpu_ms' not in prev[id]:
                 # A new thread.
                 continue
             for col in requested_columns:

@@ -5,7 +5,7 @@ import basetest
 class testnetwork(basetest.Basetest):
     def test_ifconfig(self):
         path = self.path_by_nick(self.network_api, "listIfconfig")
-        intf = self.curl(path + 'lo0')
+        intf = self.curl(f'{path}lo0')
         self.assert_key_in("data", intf)
         self.assert_key_in("config", intf)
         conf = intf["config"]

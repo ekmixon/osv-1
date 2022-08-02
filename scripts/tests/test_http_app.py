@@ -12,10 +12,9 @@ def check_with_curl(url, expected_http_line):
     print("------------")
 
 def write_to_status_file(line):
-    status_file_name = os.getenv('STATUS_FILE')
-    if status_file_name:
-       with open(status_file_name, "a+") as status_file:
-         status_file.write(line + '\n')
+    if status_file_name := os.getenv('STATUS_FILE'):
+        with open(status_file_name, "a+") as status_file:
+          status_file.write(line + '\n')
 
 def run(command, hypervisor_name, host_port, guest_port, http_path, expected_http_line=None,
         image_path=None, line=None, concurrency=50, count=1000, duration=10, threads=4, pre_script=None,
@@ -24,11 +23,11 @@ def run(command, hypervisor_name, host_port, guest_port, http_path, expected_htt
     py_args = []
 
     if kernel_path != None:
-       print('Using kernel at %s' % kernel_path)
-       if hypervisor_name == 'firecracker':
-          py_args += ['-k', kernel_path]
-       else:
-          py_args += ['-k', '--kernel-path', kernel_path]
+        print(f'Using kernel at {kernel_path}')
+        if hypervisor_name == 'firecracker':
+           py_args += ['-k', kernel_path]
+        else:
+           py_args += ['-k', '--kernel-path', kernel_path]
 
     if image_path != None:
         py_args = ['--image', image_path]
@@ -45,9 +44,9 @@ def run(command, hypervisor_name, host_port, guest_port, http_path, expected_htt
         subprocess.check_output([pre_script])
 
     if hypervisor_name == 'firecracker':
-        app_url = "http://172.16.0.2:%s%s" % (guest_port, http_path)
+        app_url = f"http://172.16.0.2:{guest_port}{http_path}"
     else:
-        app_url = "http://127.0.0.1:%s%s" % (host_port, http_path)
+        app_url = f"http://127.0.0.1:{host_port}{http_path}"
 
     if expected_http_line != None:
         check_with_curl(app_url, expected_http_line)
@@ -90,10 +89,10 @@ def run(command, hypervisor_name, host_port, guest_port, http_path, expected_htt
         app.join()
     except Exception as ex:
         if error_line_to_ignore_on_kill != "" and error_line_to_ignore_on_kill in app.line_with_error():
-            print("Ignorring error from guest on kill: %s" % app.line_with_error())
+            print(f"Ignorring error from guest on kill: {app.line_with_error()}")
         else:
-            print("  ERROR: Guest failed on kill() or join(): %s" % str(ex))
-            write_to_status_file("  ERROR: Guest failed on kill() or join(): %s" % str(ex))
+            print(f"  ERROR: Guest failed on kill() or join(): {str(ex)}")
+            write_to_status_file(f"  ERROR: Guest failed on kill() or join(): {str(ex)}")
             success = False
 
     if test_client == 'ab':
@@ -141,13 +140,13 @@ if __name__ == "__main__":
     cmdargs = parser.parse_args()
 
     hypervisor_name = 'qemu'
-    if cmdargs.hypervisor != None:
-        hypervisor_name = cmdargs.hypervisor
-    else:
+    if cmdargs.hypervisor is None:
         hypervisor_from_env = os.getenv('OSV_HYPERVISOR')
         if hypervisor_from_env != None:
             hypervisor_name = hypervisor_from_env
 
+    else:
+        hypervisor_name = cmdargs.hypervisor
     if hypervisor_name == 'firecracker':
         os.environ['OSV_HOSTNAME'] = '172.16.0.2'
     else:
@@ -158,13 +157,10 @@ if __name__ == "__main__":
         kernel_path = os.getenv('OSV_KERNEL')
 
     if kernel_path and not os.path.exists(kernel_path):
-        print("The file %s does not exist!" % kernel_path)
+        print(f"The file {kernel_path} does not exist!")
         sys.exit(-1)
 
-    test_client = 'ab'
-    if os.getenv('TESTER'):
-        test_client = os.getenv('TESTER')
-
+    test_client = os.getenv('TESTER') or 'ab'
     if os.getenv('TESTER_CONCURRENCY'):
         cmdargs.concurrency = int(os.getenv('TESTER_CONCURRENCY'))
 

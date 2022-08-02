@@ -36,10 +36,17 @@ class ProfSample:
 
     def intersection(self, time_range):
         intersection = self.time_range.intersection(time_range)
-        if not intersection:
-            return None
-        return ProfSample(intersection.begin, self.cpu, self.thread, self.backtrace,
-            resident_time=intersection.end - intersection.begin)
+        return (
+            ProfSample(
+                intersection.begin,
+                self.cpu,
+                self.thread,
+                self.backtrace,
+                resident_time=intersection.end - intersection.begin,
+            )
+            if intersection
+            else None
+        )
 
 time_units = [
     (1e9 * 3600, "h"),
@@ -57,17 +64,21 @@ def parse_time_as_nanos(text, default_unit='ns'):
     for level, name in time_units:
         if name == default_unit:
             return float(text) * level
-    raise Exception('Unknown unit: ' + default_unit)
+    raise Exception(f'Unknown unit: {default_unit}')
 
 def format_time(time, format="%.2f %s"):
-    for level, name in sorted(time_units, key=lambda level_name1: -level_name1[0]):
-        if time >= level:
-            return format % (float(time) / level, name)
-    return str(time)
+    return next(
+        (
+            format % (float(time) / level, name)
+            for level, name in sorted(
+                time_units, key=lambda level_name1: -level_name1[0]
+            )
+            if time >= level
+        ),
+        str(time),
+    )
 
-unimportant_functions = set([
-    '_M_invoke',
-    ])
+unimportant_functions = {'_M_invoke'}
 
 unimportant_prefixes = [
     ('tracepoint_base::log_backtrace(trace_record*, unsigned char*&)',
@@ -97,13 +108,11 @@ unimportant_prefixes = [
      'operator()'),
 ]
 
-bottom_of_stack = set(['thread_main', 'thread_main_c'])
+bottom_of_stack = {'thread_main', 'thread_main_c'}
 
 def strip_garbage(backtrace):
     def is_good(src_addr):
-        if not src_addr.name:
-            return True
-        return not src_addr.name in unimportant_functions
+        return src_addr.name not in unimportant_functions if src_addr.name else True
 
     for chain in unimportant_prefixes:
         if len(backtrace) >= len(chain) and \
@@ -158,13 +167,11 @@ class TimedConventionMatcher(TimedTraceMatcher):
         self.block_tracepoints = set()
 
     def get_name_of_ended_func(self, name):
-        m = re.match('(?P<func>.*)(_ret|_err)', name)
-        if m:
-            return m.group('func')
+        if m := re.match('(?P<func>.*)(_ret|_err)', name):
+            return m['func']
 
     def is_entry_or_exit(self, sample):
-        ended = self.get_name_of_ended_func(sample.name)
-        if ended:
+        if ended := self.get_name_of_ended_func(sample.name):
             self.block_tracepoints.add(ended)
             return False
 
@@ -172,8 +179,7 @@ class TimedConventionMatcher(TimedTraceMatcher):
             return True
 
     def get_correlation_id(self, sample):
-        ended = self.get_name_of_ended_func(sample.name)
-        if ended:
+        if ended := self.get_name_of_ended_func(sample.name):
             return (sample.thread.ptr, ended)
         return (sample.thread.ptr, sample.name)
 
@@ -184,8 +190,7 @@ class PerCpuConventionMatcher(TimedTraceMatcher):
         self.is_entry_or_exit = self.m.is_entry_or_exit
 
     def get_correlation_id(self, sample):
-        ended = self.get_name_of_ended_func(sample.name)
-        if ended:
+        if ended := self.get_name_of_ended_func(sample.name):
             return (sample.cpu, ended)
         return (sample.cpu, sample.name)
 
@@ -195,13 +200,13 @@ class timed_trace_producer(object):
     ]
 
     def __init__(self):
-        self.matcher_by_name = dict()
+        self.matcher_by_name = {}
         for m in self.pair_matchers:
             self.matcher_by_name[m.entry_trace_name] = m
             self.matcher_by_name[m.exit_trace_name] = m
 
         self.matcher_by_name['sched_idle'] = \
-            self.matcher_by_name['sched_idle_ret'] = PerCpuConventionMatcher()
+                self.matcher_by_name['sched_idle_ret'] = PerCpuConventionMatcher()
 
         self.convention_matcher = TimedConventionMatcher()
         self.open_samples = {}
@@ -212,29 +217,26 @@ class timed_trace_producer(object):
         if not sample.time:
             return
 
-        if not sample.cpu in self.earliest_trace_per_cpu:
+        if sample.cpu not in self.earliest_trace_per_cpu:
             self.earliest_trace_per_cpu[sample.cpu] = sample
 
-        if not self.last_time:
-            self.last_time = sample.time
-        else:
-            self.last_time = max(self.last_time, sample.time)
+        self.last_time = (
+            max(self.last_time, sample.time) if self.last_time else sample.time
+        )
 
         matcher = self.matcher_by_name.get(sample.name, None)
         if not matcher:
             matcher = self.convention_matcher
 
         is_entry = matcher.is_entry_or_exit(sample)
-        if is_entry == None:
+        if is_entry is None:
             return
 
         id = (matcher, matcher.get_correlation_id(sample))
         if is_entry:
             if id in self.open_samples:
                 old = self.open_samples[id]
-                if self.earliest_trace_per_cpu[sample.cpu] > old:
-                    pass
-                else:
+                if self.earliest_trace_per_cpu[sample.cpu] <= old:
                     raise Exception('Nested entry:\n%s\n%s\n' % (str(old), str(sample)))
             self.open_samples[id] = sample
         else:
@@ -253,11 +255,9 @@ class timed_trace_producer(object):
 
     def get_all(self, traces):
         for t in traces:
-            timed = self(t)
-            if timed:
+            if timed := self(t):
                 yield timed
-        for timed in self.finish():
-            yield timed
+        yield from self.finish()
 
 def get_timed_traces(traces, time_range=None):
     producer = timed_trace_producer()
@@ -293,8 +293,7 @@ def get_idle_profile(traces):
         if t.name == 'sched_idle':
             cpu.idle = t
         elif t.name == 'sched_idle_ret':
-            for s in trim_samples(cpu, t.time):
-                yield s
+            yield from trim_samples(cpu, t.time)
             cpu.idle = None
         elif t.name == 'sched_wait':
             cpu.waits[t.thread.ptr] = t
@@ -304,18 +303,16 @@ def get_idle_profile(traces):
         last = t
 
     for cpu in cpus.values():
-        for s in trim_samples(cpu, t.time):
-            yield s
+        yield from trim_samples(cpu, t.time)
 
 def collapse_similar(node):
     while node.has_only_one_child():
         child = next(node.children)
-        if node.attributes == child.attributes:
-            node.squash_child()
-            node.tail.append(child.key)
-        else:
+        if node.attributes != child.attributes:
             break
 
+        node.squash_child()
+        node.tail.append(child.key)
     for child in node.children:
         collapse_similar(child)
 
@@ -327,10 +324,14 @@ def strip_level(node, level):
             strip_level(child, level - 1)
 
 def find_frame_index(frames, name):
-    for i, src_addr in enumerate(frames):
-        if src_addr.name and src_addr.name == name:
-            return i
-    return None
+    return next(
+        (
+            i
+            for i, src_addr in enumerate(frames)
+            if src_addr.name and src_addr.name == name
+        ),
+        None,
+    )
 
 class GroupByThread:
     def __init__(self):
@@ -372,14 +373,10 @@ def print_profile(samples, symbol_resolver, caller_oriented=False,
 
         if root_function:
             i = find_frame_index(frames, root_function)
-            if i:
-                frames = frames[i:]
-            else:
-                frames = None
-
+            frames = frames[i:] if i else None
         if frames:
             key = grouping.get_group(sample) if grouping else None
-            node = groups.get(key, None)
+            node = groups.get(key)
             if not node:
                 node = ProfNode('All')
                 groups[key] = node
@@ -394,7 +391,7 @@ def print_profile(samples, symbol_resolver, caller_oriented=False,
         percentage_subject_getter = attrgetter('hit_count')
 
         if root.resident_time:
-            attributes += format_time(node.resident_time) + ' '
+            attributes += f'{format_time(node.resident_time)} '
             percentage_subject_getter = attrgetter('resident_time')
 
         bracket_attributes = []
@@ -405,7 +402,7 @@ def print_profile(samples, symbol_resolver, caller_oriented=False,
         bracket_attributes.append('#%d' % node.hit_count)
 
         label = '\n '.join([node.key] + node.tail)
-        return "%s(%s) %s" % (attributes, ', '.join(bracket_attributes), label)
+        return f"{attributes}({', '.join(bracket_attributes)}) {label}"
 
     if not order:
         order = lambda node: (-node.resident_time, -node.hit_count)
@@ -429,10 +426,7 @@ def print_flame_profile(samples, symbol_resolver, min_hits_count=None, time_rang
     hits_by_symbol_list = {}
 
     def symbol_name(src_addr):
-        if src_addr.name:
-            return src_addr.name
-        else:
-            return str(src_addr.addr)
+        return src_addr.name or str(src_addr.addr)
 
     for sample in samples:
         if time_range:
@@ -446,12 +440,8 @@ def print_flame_profile(samples, symbol_resolver, min_hits_count=None, time_rang
         if frames:
             frames.reverse()
             symbol_list = ';'.join(symbol_name(src_addr) for src_addr in frames)
-            hits = hits_by_symbol_list.get(symbol_list, None)
-            if not hits:
-                hits_by_symbol_list[symbol_list] = 1
-            else:
-                hits_by_symbol_list[symbol_list] = hits + 1
-
+            hits = hits_by_symbol_list.get(symbol_list)
+            hits_by_symbol_list[symbol_list] = hits + 1 if hits else 1
     for symbol_list, hits in iter(hits_by_symbol_list.items()):
         if not min_hits_count or hits >= min_hits_count:
-            print(symbol_list + ' ' + str(hits))
+            print(f'{symbol_list} {str(hits)}')

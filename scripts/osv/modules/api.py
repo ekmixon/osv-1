@@ -67,9 +67,7 @@ class run_java(java_app):
         args = []
 
         if self.classpath:
-            args.append('-cp')
-            args.append(':'.join(self.classpath))
-
+            args.extend(('-cp', ':'.join(self.classpath)))
         args.extend(self.args)
         return [' '.join(args)]
 

@@ -8,7 +8,7 @@ from manifest_common import add_var, expand, unsymlink, read_manifest, defines, 
 # support for links in OSv, e.g., /etc/mnttab: ->/proc/mounts.
 def export_package(manifest, dest):
     abs_dest = os.path.abspath(dest)
-    print("[INFO] exporting into directory %s" % abs_dest)
+    print(f"[INFO] exporting into directory {abs_dest}")
 
     # Remove and create the base directory where we are going to put all package files.
     if os.path.exists(abs_dest):
@@ -32,42 +32,39 @@ def export_package(manifest, dest):
                 os.makedirs(target_dir)
 
             os.symlink(link_source, name)
-            print("[INFO] added link %s -> %s" % (name, link_source))
+            print(f"[INFO] added link {name} -> {link_source}")
+
+        elif os.path.islink(hostname):
+            link_source = os.readlink(hostname)
+            host_symlinks.append((link_source,name))
+        elif os.path.isfile(hostname):
+            # Make sure the target dir exists
+            dirname = os.path.dirname(name)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+
+            if hostname.endswith("-stripped.so"):
+                continue
+            hostname = strip_file(hostname)
+
+            shutil.copy(hostname, name)
+            print(f"[INFO] exported {name}")
+        elif os.path.isdir(hostname):
+            # If hostname is a dir, it is only a request to create the folder on guest. Nothing to copy.
+            if not os.path.exists(name):
+                os.makedirs(name)
+            print(f"[INFO] created dir {name}")
 
         else:
-            # If it is a symlink, then resolve it add to the list of host symlinks to be created later
-            if os.path.islink(hostname):
-                link_source = os.readlink(hostname)
-                host_symlinks.append((link_source,name))
-            # If it is a file, copy it to the target directory.
-            elif os.path.isfile(hostname):
-                # Make sure the target dir exists
-                dirname = os.path.dirname(name)
-                if not os.path.exists(dirname):
-                    os.makedirs(dirname)
-
-                if hostname.endswith("-stripped.so"):
-                    continue
-                hostname = strip_file(hostname)
-
-                shutil.copy(hostname, name)
-                print("[INFO] exported %s" % name)
-            elif os.path.isdir(hostname):
-                # If hostname is a dir, it is only a request to create the folder on guest. Nothing to copy.
-                if not os.path.exists(name):
-                    os.makedirs(name)
-                print("[INFO] created dir %s" % name)
-
-            else:
                 # Inform the user that the rule cannot be applied. For example, this happens for links in OSv.
-                print("[ERR] unable to export %s" % hostname)
+            print(f"[ERR] unable to export {hostname}")
 
     for link_source, name in host_symlinks:
         target_dir = os.path.dirname(name)
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
         os.symlink(link_source, name)
-        print("[INFO] added link %s -> %s" % (name, link_source))
+        print(f"[INFO] added link {name} -> {link_source}")
 
 def main():
     make_option = optparse.make_option

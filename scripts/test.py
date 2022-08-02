@@ -41,7 +41,7 @@ aarch64_disabled_list= [
 
 class TestRunnerTest(SingleCommandTest):
     def __init__(self, name):
-        super(TestRunnerTest, self).__init__(name, '/tests/%s' % name)
+        super(TestRunnerTest, self).__init__(name, f'/tests/{name}')
 
 # Not all files in build/release/tests/tst-*.so may be on the test image
 # (e.g., some may have actually remain there from old builds) - so lets take
@@ -51,9 +51,11 @@ is_comment = re.compile("^[ \t]*(|#.*|\[manifest])$")
 is_test = re.compile("^/tests/tst-.*.so")
 
 def running_with_kvm_on(arch, hypervisor):
-    if os.path.exists('/dev/kvm') and arch == host_arch and hypervisor in ['qemu', 'qemu_microvm', 'firecracker']:
-        return True
-    return False
+    return bool(
+        os.path.exists('/dev/kvm')
+        and arch == host_arch
+        and hypervisor in ['qemu', 'qemu_microvm', 'firecracker']
+    )
 
 def collect_tests():
     with open(cmdargs.manifest, 'r') as f:
@@ -107,7 +109,7 @@ def run_tests_in_single_instance():
     run([test for test in tests if not isinstance(test, TestRunnerTest)])
 
     disabled_tests = ' '.join(disabled_list)
-    args = run_py_args + ["-s", "-e", "/testrunner.so -d %s" % (disabled_tests)]
+    args = run_py_args + ["-s", "-e", f"/testrunner.so -d {disabled_tests}"]
     if subprocess.call(["./scripts/run.py"] + args):
         exit(1)
 
@@ -120,17 +122,15 @@ def run(tests):
             sys.stdout.flush()
 
 def pluralize(word, count):
-    if count == 1:
-        return word
-    return word + 's'
+    return word if count == 1 else f'{word}s'
 
 def run_tests():
     start = time.time()
 
     if cmdargs.name:
-        tests_to_run = list((t for t in tests if re.match('^' + cmdargs.name + '$', t.name)))
+        tests_to_run = [t for t in tests if re.match(f'^{cmdargs.name}$', t.name)]
         if not tests_to_run:
-            print('No test matches: ' + cmdargs.name)
+            print(f'No test matches: {cmdargs.name}')
             exit(1)
     else:
         tests_to_run = tests
@@ -171,11 +171,11 @@ if __name__ == "__main__":
     cmdargs = parser.parse_args()
     set_verbose_output(cmdargs.verbose)
 
-    if cmdargs.run_options != None:
-        run_py_args = cmdargs.run_options.split()
-    else:
+    if cmdargs.run_options is None:
         run_py_args = []
 
+    else:
+        run_py_args = cmdargs.run_options.split()
     if cmdargs.arch != None:
         run_py_args = run_py_args + ['--arch', cmdargs.arch]
 

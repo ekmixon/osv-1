@@ -125,8 +125,7 @@ class nbd_file(object):
 
         self._buf = self._client.read(sect_begin, sect_size)
 
-        buf = self._buf[0: offset_in_sect] + data + \
-              self._buf[offset_in_sect + count:]
+        buf = (self._buf[:offset_in_sect] + data + self._buf[offset_in_sect + count:])
 
         self._client.write(buf, sect_begin)
         self._client.flush()

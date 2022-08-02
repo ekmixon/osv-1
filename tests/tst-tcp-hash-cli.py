@@ -82,7 +82,7 @@ if __name__ == "__main__":
     hash_errors = 0
 
     pool = ThreadPool(nthreads)
-    for i in range(connections):
+    for _ in range(connections):
         pool.add_task(make_connection)
 
     pool.wait_completion()

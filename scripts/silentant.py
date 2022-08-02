@@ -21,7 +21,7 @@ except OSError:
 out = ant.communicate()[0].decode()
 
 lines = out.splitlines()
-if not (len(lines) == 3 and lines[0] == '' and lines[1] == 'BUILD SUCCESSFUL'):
+if len(lines) != 3 or lines[0] != '' or lines[1] != 'BUILD SUCCESSFUL':
     print(out, end='')
 
 sys.exit(ant.returncode)

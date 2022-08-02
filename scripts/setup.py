@@ -23,6 +23,8 @@ standard_ec2_post_install = ['pip install awscli &&'
                              'mv /etc/environment_temp /etc/environment &&'
                              'echo Done. Re-login to apply environment changes for EC2']
 
+
+
 class Fedora(object):
     name = 'Fedora'
     pre_install = '(yum list installed compat-openssl10-devel 2>/dev/null && yum -y remove compat-openssl10-devel) || echo "package compat-openssl10-devel not found -> no need to remove it"'
@@ -70,7 +72,7 @@ class Fedora(object):
                 'lua-devel',
                  ]
     if arch == 'x86_64':
-        packages = packages + [ 'gcc-c++-aarch64-linux-gnu' ]
+        packages += [ 'gcc-c++-aarch64-linux-gnu' ]
 
     ec2_packages = standard_ec2_packages
     test_packages = ['openssl-devel']
@@ -133,6 +135,7 @@ class Fedora(object):
         version = '34'
 
     versions = [Fedora_27, Fedora_28, Fedora_29, Fedora_30, Fedora_31, Fedora_32, Fedora_33, Fedora_34]
+
 
 class RHELbased(Fedora):
     name = ['Scientific Linux', 'NauLinux', 'Red Hat Enterprise Linux', 'Oracle Linux']
@@ -225,6 +228,8 @@ class Debian(object):
 
     versions = [debian, Debian_9_3]
 
+
+
 class Ubuntu(object):
     name = 'Ubuntu'
     install = 'apt-get -y install'
@@ -266,7 +271,7 @@ class Ubuntu(object):
                 'openjdk-8-jdk',
                 ]
     if arch == 'x86_64':
-        packages = packages + [ 'g++-aarch64-linux-gnu', 'gdb-multiarch' ]
+        packages += [ 'g++-aarch64-linux-gnu', 'gdb-multiarch' ]
 
     ec2_packages = standard_ec2_packages
     test_packages = ['libssl-dev', 'zip']
@@ -343,6 +348,7 @@ class Ubuntu(object):
         version = '16.04'
 
     versions = [Ubuntu_21_10, Ubuntu_21_04, Ubuntu_20_10, Ubuntu_20_04, Ubuntu_19_10, Ubuntu_19_04, Ubuntu_18_10, Ubuntu_18_04, Ubuntu_17_04, Ubuntu_16_04]
+
 
 class LinuxMint(Ubuntu):
     name = 'LinuxMint'
@@ -435,7 +441,9 @@ for distro in distros:
 
     if name.startswith(distro.name):
         for dver in distro.versions:
-            if dver.version == version or version.startswith(dver.version+'.'):
+            if dver.version == version or version.startswith(
+                f'{dver.version}.'
+            ):
                 if hasattr(distro, 'pre_install'):
                     subprocess.check_call(distro.pre_install, shell=True)
                 if hasattr(dver, 'pre_install'):
@@ -445,7 +453,7 @@ for distro in distros:
                     pkg += distro.ec2_packages + dver.ec2_packages
                 if cmdargs.test:
                     pkg += distro.test_packages + dver.test_packages
-                subprocess.check_call(distro.install + ' ' + str.join(' ', pkg), shell=True)
+                subprocess.check_call(f'{distro.install} ' + str.join(' ', pkg), shell=True)
                 if cmdargs.ec2:
                     if distro.ec2_post_install:
                         subprocess.check_call(distro.ec2_post_install, shell=True)
@@ -456,7 +464,10 @@ for distro in distros:
                 if hasattr(dver, 'post_install'):
                     subprocess.check_call(dver.post_install, shell=True)
                 sys.exit(0)
-        print ('Your distribution %s version %s is not supported by this script' % (name, version))
+        print(
+            f'Your distribution {name} version {version} is not supported by this script'
+        )
+
         sys.exit(1)
 
 print('Your distribution is not supported by this script.')

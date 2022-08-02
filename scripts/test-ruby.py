@@ -15,7 +15,10 @@ disabled_list = [
 
 class TestRunnerTest(SingleCommandTest):
     def __init__(self, name):
-        super(TestRunnerTest, self).__init__(name, '--nohalt --cwd=/tests/%s /ruby.so /tests/%s' % (os.path.dirname(name), name))
+        super(TestRunnerTest, self).__init__(
+            name,
+            f'--nohalt --cwd=/tests/{os.path.dirname(name)} /ruby.so /tests/{name}',
+        )
 
 test_files = set(glob.glob('apps/ruby/upstream/ruby/test/*/*.rb'))
 test_files |= set(glob.glob('apps/ruby/upstream/ruby/test/*.rb'))
@@ -47,7 +50,7 @@ def run_tests_in_single_instance():
     run(filter(lambda test: not isinstance(test, TestRunnerTest), tests))
 
     disabled_tests = ' '.join(disabled_list)
-    args = ["-s", "-e", "--nohalt /ruby.so %s" % (disabled_tests)]
+    args = ["-s", "-e", f"--nohalt /ruby.so {disabled_tests}"]
     if subprocess.call(["./scripts/run.py"] + args):
         exit(1)
 
@@ -60,9 +63,7 @@ def run(tests):
             sys.stdout.flush()
 
 def pluralize(word, count):
-    if count == 1:
-        return word
-    return word + 's'
+    return word if count == 1 else f'{word}s'
 
 def run_tests():
     start = time.time()

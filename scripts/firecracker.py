@@ -48,10 +48,10 @@ class ApiClient(object):
         else:
            self.socket_less = True
            self.firecracker_config = {}
-        print_time("API socket-less: %s" % self.socket_less)
+        print_time(f"API socket-less: {self.socket_less}")
 
     def api_socket_url(self, path):
-        return "http+unix://%s%s" % (self.socket_path, path)
+        return f"http+unix://{self.socket_path}{path}"
 
     def make_put_call(self, path, request_body):
         url = self.api_socket_url(path)
@@ -111,7 +111,7 @@ class ApiClient(object):
         if self.socket_less:
             self.firecracker_config['network-interfaces'] = [interface]
         else:
-            self.make_put_call('/network-interfaces/%s' % interface_name, interface)
+            self.make_put_call(f'/network-interfaces/{interface_name}', interface)
 
     def start_instance(self):
         if self.socket_less == False:
@@ -149,7 +149,7 @@ class ApiClient(object):
 def print_time(msg):
     if verbose:
         now = datetime.now()
-        print("%s: %s" % (now.isoformat(), msg))
+        print(f"{now.isoformat()}: {msg}")
 
 
 def setup_tap_interface(mode, tap_interface_name, tap_ip=None, physical_nic=None, bridge_name=None):
@@ -157,14 +157,17 @@ def setup_tap_interface(mode, tap_interface_name, tap_ip=None, physical_nic=None
     # sudo ip link delete fc_tap0 - this deletes the tap device
     tuntap_interfaces = subprocess.check_output(['ip', 'tuntap']).decode('utf-8')
     if tuntap_interfaces.find(tap_interface_name) < 0:
-        print("The tap interface %s not found -> needs to set it up!" % tap_interface_name)
+        print(
+            f"The tap interface {tap_interface_name} not found -> needs to set it up!"
+        )
+
         dirname = os.path.dirname(os.path.abspath(__file__))
         setup_networking_script = os.path.join(dirname, 'setup_fc_networking.sh')
         # Check if the bridge exists if user specified it
         if mode == 'bridged' and bridge_name:
             bridges = subprocess.check_output(['brctl', 'show']).decode('utf-8')
             if bridges.find(bridge_name) < 0:
-                print("The bridge %s does not exist per brctl. Please create one!" % bridge_name)
+                print(f"The bridge {bridge_name} does not exist per brctl. Please create one!")
                 exit(-1)
             print("Setting up TAP device in bridged mode!")
             subprocess.call([setup_networking_script, 'bridged', tap_interface_name, bridge_name])
@@ -176,15 +179,16 @@ def setup_tap_interface(mode, tap_interface_name, tap_ip=None, physical_nic=None
                 subprocess.call([setup_networking_script, 'natted', tap_interface_name, tap_ip])
 
 def find_firecracker(dirname, arch):
-    firecracker_path = os.path.join(dirname, '../.firecracker/firecracker-%s' % arch)
+    firecracker_path = os.path.join(dirname, f'../.firecracker/firecracker-{arch}')
     if os.environ.get('FIRECRACKER_PATH'):
         firecracker_path = os.environ.get('FIRECRACKER_PATH')
 
-    # And offer to install if not found
-    firecracker_version = 'v0.23.0'
     if not os.path.exists(firecracker_path):
         url_base = 'https://github.com/firecracker-microvm/firecracker/releases/download'
-        download_url = '%s/%s/firecracker-%s-%s' % (url_base, firecracker_version, firecracker_version, arch)
+        # And offer to install if not found
+        firecracker_version = 'v0.23.0'
+        download_url = f'{url_base}/{firecracker_version}/firecracker-{firecracker_version}-{arch}'
+
         answer = input("Firecracker executable has not been found under %s. "
                            "Would you like to download it from %s and place it under %s? [y|n]" %
                            (firecracker_path, download_url, firecracker_path))
@@ -195,10 +199,10 @@ def find_firecracker(dirname, arch):
         directory = os.path.dirname(firecracker_path)
         if not os.path.exists(directory):
             os.mkdir(directory)
-        download_path = firecracker_path + '.download'
+        download_path = f'{firecracker_path}.download'
         ret = subprocess.call(['wget', download_url, '-O', download_path])
         if ret != 0:
-            print('Failed to download %s!' % download_url)
+            print(f'Failed to download {download_url}!')
             exit(-1)
 
         subprocess.call(["strip", "-o", firecracker_path, download_path])
@@ -210,7 +214,7 @@ def find_firecracker(dirname, arch):
 
 def disk_path(qcow_disk_path):
     dot_pos = qcow_disk_path.rfind('.')
-    raw_disk_path = qcow_disk_path[0:dot_pos] + '.raw'
+    raw_disk_path = qcow_disk_path[:dot_pos] + '.raw'
 
     # Firecracker is not able to use disk image files in QCOW format
     # so we have to convert usr.img to raw format if the raw disk is missing
@@ -218,7 +222,7 @@ def disk_path(qcow_disk_path):
     if not os.path.exists(raw_disk_path) or os.path.getctime(qcow_disk_path) > os.path.getctime(raw_disk_path):
         ret = subprocess.call(['qemu-img', 'convert', '-O', 'raw', qcow_disk_path, raw_disk_path])
         if ret != 0:
-            print('Failed to convert %s to a raw format %s!' % (qcow_disk_path, raw_disk_path))
+            print(f'Failed to convert {qcow_disk_path} to a raw format {raw_disk_path}!')
             exit(-1)
     return raw_disk_path
 
@@ -248,10 +252,10 @@ def get_memory_size_in_mb(options):
     if options.memsize:
         regex = re.search('(\d+[MG])', options.memsize)
         if len(regex.groups()) > 0:
-            mem_size = regex.group(1)
+            mem_size = regex[1]
             memory_in_mb = int(mem_size[:-1])
             if mem_size.endswith('G'):
-                memory_in_mb = memory_in_mb * 1024
+                memory_in_mb *= 1024
     return memory_in_mb
 
 
@@ -275,22 +279,23 @@ def main(options):
             cmdline = f.read()
 
     if options.arch == 'aarch64':
-        cmdline = "console=tty --nopci %s" % cmdline
+        cmdline = f"console=tty --nopci {cmdline}"
     else:
-        cmdline = "--nopci %s" % cmdline
+        cmdline = f"--nopci {cmdline}"
 
     if options.networking:
         tap_device = 'fc_tap0'
         if not options.bridge:
             tap_ip = '172.16.0.1'
             client_ip = '172.16.0.2'
-            cmdline = '--ip=eth0,%s,255.255.255.252 --defaultgw=%s --nameserver=%s %s' % (client_ip, tap_ip, tap_ip, cmdline)
+            cmdline = f'--ip=eth0,{client_ip},255.255.255.252 --defaultgw={tap_ip} --nameserver={tap_ip} {cmdline}'
+
             setup_tap_interface('natted', tap_device, tap_ip, options.physical_nic)
         else:
             setup_tap_interface('bridged', tap_device, None, None, options.bridge)
 
     if options.verbose:
-        cmdline = '--verbose ' + cmdline
+        cmdline = f'--verbose {cmdline}'
 
     # Create API client and make API calls
     if options.api:
@@ -319,7 +324,7 @@ def main(options):
             client.add_network_interface('eth0', 'fc_tap0')
 
         client.create_instance(options.kernel_path, cmdline)
-        print_time("Created OSv VM with cmdline: %s" % cmdline)
+        print_time(f"Created OSv VM with cmdline: {cmdline}")
 
         if not options.api:
             if options.verbose:
@@ -330,7 +335,7 @@ def main(options):
             print_time("Booted OSv VM")
 
     except ApiException as e:
-        print("Failed to make firecracker API call: %s." % e)
+        print(f"Failed to make firecracker API call: {e}.")
         firecracker.kill()
         stty_restore()
         exit(-1)
@@ -392,8 +397,20 @@ if __name__ == "__main__":
     else:
         default_kernel_file_name = "kernel.elf"
         default_image_file_name = "usr.img"
-    cmdargs.kernel_path = os.path.abspath(cmdargs.kernel or os.path.join(osv_base, "build/%s/%s" % (cmdargs.opt_path, default_kernel_file_name)))
-    cmdargs.image_path = os.path.abspath(cmdargs.image or os.path.join(osv_base, "build/%s/%s" % (cmdargs.opt_path, default_image_file_name)))
+    cmdargs.kernel_path = os.path.abspath(
+        cmdargs.kernel
+        or os.path.join(
+            osv_base, f"build/{cmdargs.opt_path}/{default_kernel_file_name}"
+        )
+    )
+
+    cmdargs.image_path = os.path.abspath(
+        cmdargs.image
+        or os.path.join(
+            osv_base, f"build/{cmdargs.opt_path}/{default_image_file_name}"
+        )
+    )
+
     if cmdargs.verbose:
         verbose = True
     main(cmdargs)

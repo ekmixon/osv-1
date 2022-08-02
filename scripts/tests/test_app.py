@@ -7,16 +7,13 @@ from time import sleep
 def run(command, hypervisor_name, image_path=None, line=None, guest_port=None, host_port=None,
         input_lines=[], kill_app=False, kernel_path=None):
 
-    py_args = []
-    if image_path != None:
-        py_args = ['--image', image_path]
-
+    py_args = ['--image', image_path] if image_path != None else []
     if kernel_path != None:
-       print('Using kernel at %s' % kernel_path)
-       if hypervisor_name == 'firecracker':
-          py_args += ['-k', kernel_path]
-       else:
-          py_args += ['-k', '--kernel-path', kernel_path]
+        print(f'Using kernel at {kernel_path}')
+        if hypervisor_name == 'firecracker':
+           py_args += ['-k', kernel_path]
+        else:
+           py_args += ['-k', '--kernel-path', kernel_path]
 
     pipe_guest_stdin= len(input_lines) > 0
     if guest_port != None and host_port != None:
@@ -42,10 +39,9 @@ def run(command, hypervisor_name, image_path=None, line=None, guest_port=None, h
     print('----------')
     print('  SUCCESS')
 
-    status_file_name = os.getenv('STATUS_FILE')
-    if status_file_name:
-       with open(status_file_name, "a+") as status_file:
-         status_file.write('  SUCCESS\n')
+    if status_file_name := os.getenv('STATUS_FILE'):
+        with open(status_file_name, "a+") as status_file:
+          status_file.write('  SUCCESS\n')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='test_app')
@@ -66,19 +62,19 @@ if __name__ == "__main__":
     cmdargs = parser.parse_args()
 
     hypervisor_name = 'qemu'
-    if cmdargs.hypervisor != None:
-        hypervisor_name = cmdargs.hypervisor
-    else:
+    if cmdargs.hypervisor is None:
         hypervisor_from_env = os.getenv('OSV_HYPERVISOR')
         if hypervisor_from_env != None:
             hypervisor_name = hypervisor_from_env
 
+    else:
+        hypervisor_name = cmdargs.hypervisor
     kernel_path = cmdargs.kernel_path
     if not kernel_path and os.getenv('OSV_KERNEL'):
         kernel_path = os.getenv('OSV_KERNEL')
 
     if kernel_path and not os.path.exists(kernel_path):
-        print("The file %s does not exist!" % kernel_path)
+        print(f"The file {kernel_path} does not exist!")
         sys.exit(-1)
 
     set_verbose_output(True)
